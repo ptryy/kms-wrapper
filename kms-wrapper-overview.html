@@ -430,8 +430,9 @@
       <!-- ════ ARROWS — Gateway → Signers ════ -->
       <line x1="444" y1="155" x2="494" y2="165" stroke="#627eea" stroke-width="1.5" marker-end="url(#arrow)"/>
       <line x1="444" y1="185" x2="494" y2="370" stroke="#00d4aa" stroke-width="1.5" marker-end="url(#arrow2)"/>
-      <!-- CLI → Signers -->
-      <line x1="444" y1="440" x2="494" y2="370" stroke="#f7931a" stroke-width="1.5" marker-end="url(#arrow4)"/>
+      <!-- CLI → Signers (EVM + Cosmos) -->
+      <line x1="444" y1="420" x2="494" y2="165" stroke="#f7931a" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow4)"/>
+      <line x1="444" y1="440" x2="494" y2="370" stroke="#f7931a" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow4)"/>
 
       <!-- ════ ARROWS — Signers → Vault ════ -->
       <line x1="684" y1="165" x2="734" y2="185" stroke="#ffd700" stroke-width="1.5" marker-end="url(#arrow3)"/>
@@ -447,7 +448,7 @@
       <line x1="56" y1="661" x2="90" y2="661" stroke="#ffd700" stroke-width="1.5"/>
       <text x="96" y="665" fill="#8892aa" font-size="10">Vault API call</text>
       <line x1="56" y1="679" x2="90" y2="679" stroke="#f7931a" stroke-width="1.5" stroke-dasharray="4,3"/>
-      <text x="96" y="683" fill="#8892aa" font-size="10">CLI direct path</text>
+      <text x="96" y="683" fill="#8892aa" font-size="10">CLI path (EVM + Cosmos)</text>
       <rect x="56" y="694" width="34" height="10" rx="2" fill="none" stroke="#f7931a" stroke-width="1" stroke-dasharray="3,2"/>
       <text x="56" y="706" fill="#f7931a" font-size="9">✦</text>
       <text x="68" y="706" fill="#8892aa" font-size="10">Planned feature</text>
@@ -635,7 +636,7 @@
       <div class="usecase-num">4</div>
       <div>
         <h3>Multi-Tenant DevOps Key Management</h3>
-        <p>Platform teams managing multiple projects and chains use the CLI (<code>kms-wrapper keys create/show</code>) and Vault policy scoping to provision isolated signing keys per project. Each project gets its own key namespace (<code>project-a/mantra/relayer</code>) with no cross-tenant access.</p>
+        <p>Platform teams managing multiple projects and chains use the CLI (<code>kms-wrapper keys create/show</code>, <code>sign evm</code>, <code>sign cosmos</code>) and Vault policy scoping to provision isolated signing keys per project. Each project gets its own key namespace (<code>project-a/mantra/relayer</code>) with no cross-tenant access.</p>
         <div class="pills">
           <span class="pill">Multi-tenant</span>
           <span class="pill">Vault Policy Isolation</span>
