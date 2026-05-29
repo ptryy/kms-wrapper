@@ -1,10 +1,29 @@
+## 0. kms-vault-plugin (replaces Vault Transit backend)
+
+> All tasks in sections 4–5 that reference Transit paths need re-implementation against the plugin. These new tasks cover the plugin itself and the infrastructure changes. Mark the Transit-based section 4/5 tasks as superseded below.
+
+- [ ] 0.1 Create `cmd/kms-vault-plugin/main.go` — plugin binary entrypoint calling `plugin.Serve()`
+- [ ] 0.2 Create `internal/plugin/backend.go` — implement `logical.Backend` with `Paths()` wiring and `BackendType: logical.TypeLogical`
+- [ ] 0.3 Create `internal/plugin/path_keys.go` — implement `createKey` (generate secp256k1 keypair, store `KeyEntry`), `readKey` (return address + compressed pubkey + metadata, never privkey), `deleteKey`, `listKeys`
+- [ ] 0.4 Create `internal/plugin/path_sign.go` — implement raw sign: accept `{"input": "<64-hex>"}` (32 bytes), secp256k1 sign, return `{"r": "...", "s": "..."}` (hex); no internal hashing
+- [ ] 0.5 Add plugin-level unit tests: key create/read/delete round-trip, sign round-trip, invalid input rejection, using `vault/sdk/logical/testing`
+- [ ] 0.6 Add `build-plugin` Makefile target: `GOOS=linux GOARCH=amd64 go build -o vault/plugins/kms-vault-plugin ./cmd/kms-vault-plugin`
+- [ ] 0.7 Create `vault/init.sh`: compute SHA-256 of binary, `vault plugin register`, `vault secrets enable -path=kms kms-vault-plugin`
+- [ ] 0.8 Update `docker-compose.yml`: bump image to `hashicorp/vault:1.17`, add `vault/plugins` volume mount, add `VAULT_LOCAL_CONFIG` with `plugin_directory`
+- [ ] 0.9 Update `Makefile` `dev-up` target to run `vault/init.sh` after Vault starts (with health-check retry loop)
+- [ ] 0.10 Add `hashicorp/vault/sdk` to `go.mod`
+
 ## 1. Repository & Module Scaffold
 
 - [x] 1.1 Initialise Go module (`go mod init github.com/ryan-truong/kms-wrapper`)
 - [x] 1.2 Create directory tree: `cmd/kms-wrapper/`, `internal/vault/`, `internal/signer/evm/`, `internal/signer/cosmos/`, `internal/gateway/`, `internal/config/`, `pkg/types/`
+- [ ] 1.2a Add `cmd/kms-vault-plugin/` and `internal/plugin/` to directory tree (plugin binary)
 - [x] 1.3 Add core dependencies: `hashicorp/vault/api`, `ethereum/go-ethereum`, `cosmos/cosmos-sdk`, `spf13/cobra`, `spf13/viper`
+- [ ] 1.3a Add `hashicorp/vault/sdk` dependency (plugin framework)
 - [x] 1.4 Create `Makefile` with targets: `build`, `test`, `lint`, `dev-up`, `dev-down`, `run-gateway`
+- [ ] 1.4a Add `build-plugin` Makefile target (covered by task 0.6)
 - [x] 1.5 Create `docker-compose.yml` with Vault in dev mode (port 8200, root token `root`)
+- [ ] 1.5a Update `docker-compose.yml` for Vault 1.17 + plugin volume (covered by task 0.8)
 - [x] 1.6 Create `.env.example` with `VAULT_ADDR`, `VAULT_TOKEN`, `KMS_GATEWAY_TOKEN`, `KMS_GATEWAY_ADDR`
 
 ## 2. Config Package
@@ -20,23 +39,25 @@
 - [x] 3.2 Define `KeyInfo` struct: `Path`, `PublicKeyHex`, `EVMAddress`, `CosmosAddress`
 - [x] 3.3 Define error types: `ErrNotFound`, `ErrPermission`, `ErrInvalidInput`
 
-## 4. Vault Backend (`internal/vault`)
+## 4. Vault Client (`internal/vault`) — update for plugin paths
+
+> Tasks 4.1–4.4 are complete and unchanged. Tasks 4.5–4.8 need re-implementation against the plugin API.
 
 - [x] 4.1 Define `AuthProvider` interface with `Token() (string, error)` method
 - [x] 4.2 Implement `TokenAuthProvider` (returns static token from config)
 - [x] 4.3 Add `AppRoleAuthProvider` stub that satisfies the interface and returns `errNotImplemented`
 - [x] 4.4 Implement `Client` struct with constructor: validates Vault connectivity via health endpoint
-- [x] 4.5 Implement `CreateKey(path string) error` — idempotent, `ecdsa-p256k1` type
-- [x] 4.6 Implement `GetPublicKey(path string) ([]byte, error)` — returns 65-byte uncompressed pubkey
-- [x] 4.7 Implement `Sign(path string, hash []byte) (r, s *big.Int, err error)` — `hash_algorithm=none`, decodes DER signature
-- [x] 4.8 Write unit tests with a mock Vault HTTP server (no real Vault dependency)
+- [ ] 4.5 Re-implement `CreateKey(ctx, path string) error` — POST `kms/keys/<path>` (plugin); remove `type=ecdsa-p256k1` (plugin infers secp256k1 type)
+- [ ] 4.6 Re-implement `GetPublicKey(ctx, path string) ([]byte, error)` — GET `kms/keys/<path>`, parse `compressed_pub_key` (base64 33 bytes) from plugin response
+- [ ] 4.7 Re-implement `Sign(ctx, path string, hash []byte) (r, s *big.Int, err error)` — POST `kms/sign/<path>` with `{"input": hex(hash)}`; parse `r`, `s` hex fields from plugin response (no DER decoding)
+- [ ] 4.8 Update unit tests: mock plugin HTTP server responses (replace Transit mock responses)
 
 ## 5. Key Path Policy (`internal/vault` or `pkg/types`)
 
-- [x] 5.1 Implement `ValidateKeyPath(path string) error` — enforces `{project}/{chain}/{username}` format, `[a-z0-9_-]` segments
-- [x] 5.2 Define reserved chain segment list (`evm`, `eth`, `mantra`, `cosmos`, `osmosis`) and log warning for unknown values
-- [x] 5.3 Implement `ToVaultPath(path string) string` — returns `transit/keys/<path>`
-- [x] 5.4 Write unit tests for valid paths, invalid characters, missing segments, empty segments
+- [x] 5.1 Implement `ValidateKeyPath(path string) error` — enforces `{project}/{chain}/{username}` format, `[a-z0-9_-]` segments — **unchanged**
+- [x] 5.2 Define reserved chain segment list (`evm`, `eth`, `mantra`, `cosmos`, `osmosis`) — **unchanged**
+- [ ] 5.3 Update `ToVaultPath(path string) string` — change prefix from `transit/keys/<path>` to `kms/keys/<path>`; add `ToSignPath(path string) string` returning `kms/sign/<path>`
+- [x] 5.4 Write unit tests for valid paths, invalid characters, missing segments, empty segments — **unchanged**
 
 ## 6. EVM Signer (`internal/signer/evm`)
 

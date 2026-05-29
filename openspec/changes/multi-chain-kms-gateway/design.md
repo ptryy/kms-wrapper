@@ -1,9 +1,11 @@
 ## Context
 
-No existing signing infrastructure. Teams running EVM validators, Cosmos relayers, and multi-chain ops currently handle private keys in plaintext config files or roll bespoke Vault integrations per chain. This project establishes a canonical, self-hostable KMS layer backed by HashiCorp Vault Transit. Target environment is standard Debian/Ubuntu Linux VMs on an internal VPN — no HSM, no cloud KMS dependency.
+No existing signing infrastructure. Teams running EVM validators, Cosmos relayers, and multi-chain ops currently handle private keys in plaintext config files or roll bespoke Vault integrations per chain. This project establishes a canonical, self-hostable KMS layer backed by HashiCorp Vault 1.17 with a custom secp256k1 signing plugin (`kms-vault-plugin`). Target environment is standard Debian/Ubuntu Linux VMs on an internal VPN — no HSM, no cloud KMS dependency.
+
+> **Why not Vault Transit?** Vault OSS Transit engine does not support the `secp256k1` curve natively. The `ecdsa-p256k1` key type is absent from Vault OSS. The `vault-ethereum` community plugin does support secp256k1 but (a) hashes inputs with keccak256 internally — incompatible with Cosmos SDK's SHA-256 requirement — and (b) does not expose raw compressed public keys, which Cosmos `SignatureV2` requires. A purpose-built plugin is the only approach that correctly handles both ecosystems.
 
 Constraints:
-- Keys never leave Vault (Transit engine handles signing server-side).
+- Keys never leave Vault (plugin storage is encrypted by Vault's seal key).
 - Single binary deployment (`kms-wrapper`) for both CLI and gateway server modes.
 - Internal-network-first: gateway listens on localhost/VPN interface, not 0.0.0.0.
 - Multi-tenant from day 1: key paths encode project, chain, and user identity.
@@ -14,10 +16,10 @@ Constraints:
 - Define package structure, interfaces, and config schema for the Go module.
 - Specify REST gateway endpoint contract (`/sign/evm`, `/sign/cosmos`, `/keys/...`).
 - Define CLI subcommand tree and flag conventions.
-- Specify Vault Transit key type per chain (secp256k1 for both EVM and Cosmos).
+- Specify custom `kms-vault-plugin` providing secp256k1 key management and signing for both EVM and Cosmos.
 - Define key path convention and validation rules.
-- Produce Docker Compose stack for local dev (Vault dev mode).
-- Produce Makefile targets: `build`, `test`, `lint`, `dev-up`, `dev-down`.
+- Produce Docker Compose stack for local dev (Vault 1.17 dev mode + plugin volume mount).
+- Produce Makefile targets: `build`, `build-plugin`, `test`, `lint`, `dev-up`, `dev-down`.
 
 **Non-Goals:**
 - AppRole auth implementation (interface defined, not wired).
@@ -38,21 +40,87 @@ Constraints:
 
 ---
 
-### D2: Vault Transit key type — `ecdsa-p256k1` (secp256k1)
+### D2: Key backend — custom `kms-vault-plugin` (secp256k1)
 
-**Decision**: All keys use Vault's `ecdsa-p256k1` key type (Vault 1.10+).
+**Decision**: All keys are managed by a purpose-built Vault plugin (`kms-vault-plugin`) mounted at `kms/`. The plugin stores secp256k1 private keys in Vault's encrypted logical storage and exposes dedicated endpoints for key creation, public key retrieval, raw signing, and key import. Vault's seal key encrypts all plugin storage at rest.
 
-**Rationale**: Both EVM (Ethereum) and Cosmos SDK chains use secp256k1. A single key type supports both ecosystems, so the same Vault key can sign EVM and Cosmos transactions without duplication.
+**Rationale**: Vault OSS Transit does not support secp256k1. The `vault-ethereum` community plugin does support secp256k1 but hashes inputs with keccak256 internally, making it incompatible with Cosmos SDK's SHA-256 signing requirement, and it does not expose raw compressed public keys needed for Cosmos `SignatureV2`. A single custom plugin is the only approach that handles both ecosystems correctly without splitting backends.
 
-**Alternatives considered**: `ed25519` for Cosmos — some Cosmos chains support it, but EVM does not. Rejected to keep key management uniform.
+**Alternatives considered**:
+- Vault Transit `ecdsa-p256k1` — key type does not exist in Vault OSS; rejected.
+- `vault-ethereum` for EVM + custom plugin for Cosmos — two backends, two policy surfaces, two mount configurations; rejected in favour of a single unified plugin.
+- `vault-ethereum` for everything — keccak256/SHA-256 mismatch for Cosmos; rejected.
 
 ---
 
-### D3: Key path convention — `transit/keys/{project}/{chain}/{username}`
+### D2a: Plugin endpoint contract
 
-**Decision**: Encode project, chain, and username in the Vault Transit key name using `/`-separated segments.
+**Decision**: The `kms-vault-plugin` exposes the following paths under its mount (`kms/`):
 
-**Rationale**: Vault Transit key names support `/` as a path separator in the API path (`transit/sign/<key-name>`). This allows Vault policies to be scoped to `transit/keys/project-a/*` without needing separate mounts per tenant.
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `kms/keys/<path>` | Generate a new secp256k1 key |
+| GET | `kms/keys/<path>` | Read key info (address, compressed pubkey, source, timestamps) |
+| LIST | `kms/keys/` | List key names under a prefix |
+| DELETE | `kms/keys/<path>` | Delete key entry |
+| POST | `kms/keys/<path>/import` | Import raw 32-byte secp256k1 private key (hex) |
+| POST | `kms/sign/<path>` | Raw secp256k1 sign of a pre-hashed 32-byte input |
+
+The `sign` endpoint intentionally does **no internal hashing** — callers are responsible for hashing (keccak256 for EVM, SHA-256 for Cosmos). This preserves the existing `vault.Client.Sign(path, 32-byte-hash)` interface; only the backend path changes.
+
+**Rationale**: Separating the hash step (gateway) from the sign step (plugin) keeps the plugin minimal and chain-agnostic. It also means `evm.go` and `cosmos.go` require zero changes — the gateway already computes the correct hash for each chain before calling `vault.Sign`.
+
+---
+
+### D2b: Plugin key storage
+
+**Decision**: Each key entry is stored as a JSON-encoded `KeyEntry` struct in Vault's logical storage at `keys/<path>`:
+
+```go
+type KeyEntry struct {
+    PrivateKey       []byte     // 32-byte secp256k1 scalar
+    CompressedPubKey []byte     // 33-byte compressed public key
+    EVMAddress       string     // EIP-55 checksummed hex address
+    Source           string     // "generated" | "imported"
+    CreatedAt        time.Time
+    ImportedAt       *time.Time // non-nil only when Source == "imported"
+}
+```
+
+`PrivateKey` is never returned in any API response. The `GET kms/keys/<path>` response includes only `evm_address`, `compressed_pub_key` (base64), `source`, and timestamps.
+
+**Rationale**: Vault's logical storage is encrypted by the seal key using AES-256-GCM. Storing the private key here is equivalent in security to Vault Transit — the key is protected by Vault's encryption and never leaves the Vault process boundary.
+
+---
+
+### D2c: Plugin build and deployment
+
+**Decision**: The plugin is compiled as a separate binary (`cmd/kms-vault-plugin/main.go`) and delivered via Docker volume mount for local dev:
+
+```
+make build-plugin        # cross-compiles for linux/amd64 → vault/plugins/kms-vault-plugin
+make dev-up              # docker-compose up + vault/init.sh (registers + enables plugin)
+```
+
+`vault/init.sh` runs after Vault starts and performs:
+1. `vault plugin register secret -sha256=<hash> kms-vault-plugin`
+2. `vault secrets enable -path=kms kms-vault-plugin`
+
+The plugin SHA-256 is computed at init time from the mounted binary — no hard-coded hash in source.
+
+**Vault version**: 1.17 (upgraded from 1.15). No breaking changes to the plugin SDK or Docker dev mode between 1.15 and 1.17.
+
+**Alternatives considered**: Custom Docker image with plugin baked in — cleaner for prod but heavier for local dev iteration; deferred to a future prod deployment change.
+
+---
+
+### D3: Key path convention — `kms/keys/{project}/{chain}/{username}`
+
+**Decision**: Encode project, chain, and username in the plugin key name using `/`-separated segments. Plugin storage path: `kms/keys/{project}/{chain}/{username}`.
+
+**Rationale**: The `/` separator works identically in the plugin's storage namespace as it did in Vault Transit. Vault policies can still be scoped to `kms/keys/project-a/*` without separate mounts per tenant. The three-segment format and `[a-z0-9_-]` character restriction in `path.go` are unchanged.
+
+**Change from previous design**: path prefix flips from `transit/keys/` to `kms/keys/` and `transit/sign/` to `kms/sign/`. `ValidateKeyPath` and the three-segment format are unchanged.
 
 **Alternatives considered**: Separate Vault mounts per project — too many mounts to manage operationally.
 
@@ -72,23 +140,35 @@ Constraints:
 
 ```
 kms-wrapper/
-├── cmd/kms-wrapper/        # cobra root command + main.go
+├── cmd/
+│   ├── kms-wrapper/        # cobra root command + main.go (CLI + gateway)
+│   └── kms-vault-plugin/   # Vault plugin binary entrypoint
+│       └── main.go
 ├── internal/
-│   ├── vault/              # Vault Transit client (auth, sign, key mgmt)
+│   ├── plugin/             # kms-vault-plugin implementation
+│   │   ├── backend.go      # Vault plugin framework wiring (logical.Backend)
+│   │   ├── path_keys.go    # create / read / delete / import endpoints
+│   │   └── path_sign.go    # raw secp256k1 sign endpoint
+│   ├── vault/              # Gateway-side Vault client (calls plugin API)
 │   ├── signer/
-│   │   ├── evm/            # EVM signing logic
-│   │   └── cosmos/         # Cosmos signing logic
+│   │   ├── evm/            # EVM signing logic (hashing + sig recovery)
+│   │   └── cosmos/         # Cosmos signing logic (hashing + address derivation)
 │   ├── gateway/            # HTTP server, middleware, handlers
 │   └── config/             # Config struct, viper loading, validation
 ├── pkg/
 │   └── types/              # Public types: SignRequest, SignResponse, KeyInfo
+├── vault/
+│   ├── plugins/            # Plugin binary output dir (git-ignored)
+│   └── init.sh             # Register + enable plugin after Vault starts
 ├── openspec/               # Change proposals, design, specs, tasks
-├── docker-compose.yml      # Vault dev mode stack
+├── docker-compose.yml      # Vault 1.17 dev mode + plugin volume mount
 ├── Makefile
 └── go.mod
 ```
 
-**Rationale**: `internal/` prevents accidental import of unstable packages. `pkg/types` exposes only the stable request/response surface for potential SDK consumers.
+**Rationale**: `internal/plugin` houses the Vault plugin code — a separate compilation target from the gateway. Both binaries share `pkg/types` and can share secp256k1 utility code. `vault/plugins/` is git-ignored; the binary is built locally via `make build-plugin` before `make dev-up`.
+
+**Key insight on signing layers**: `internal/signer/evm` and `internal/signer/cosmos` are **unchanged** — they compute hashes and assemble signatures using the same `vault.Client.Sign(path, hash)` interface. Only the client's backend path changes from `transit/sign/<path>` to `kms/sign/<path>`.
 
 ---
 
@@ -103,10 +183,12 @@ kms-wrapper/
 | Risk | Mitigation |
 |------|-----------|
 | Static bearer token leaks | Document rotation procedure; mark token as short-lived secret. Future: AppRole. |
-| Vault Transit `ecdsa-p256k1` unavailable on older Vault | Document minimum Vault version (1.10+) in README. |
+| Plugin binary mismatch (wrong arch or stale SHA-256) | `vault/init.sh` computes SHA-256 at registration time from the mounted binary. `make build-plugin` cross-compiles for `linux/amd64` regardless of host OS. |
+| Plugin storage not replicated in HA Vault | Plugin uses Vault's integrated storage — same replication guarantees as Transit. No separate replication concern for OSS single-node. |
 | Cosmos signing: amino vs direct encoding mismatch | Unit tests with known-good tx vectors from `cosmjs` / `cosmwasm`. |
 | EIP-712 domain separator inconsistency | Test against MetaMask reference vectors. |
-| Key path with `/` breaks some Vault CLI tooling | Documented workaround: use API directly or `vault kv` equivalents. |
+| Key path with `/` breaks some Vault CLI tooling | Documented workaround: use API directly. Plugin keys listed via `vault list kms/keys/`. |
+| Vault 1.17 upgrade from 1.15 | No breaking changes to plugin SDK or Docker dev mode between 1.15 and 1.17. `go-jose` v3→v4 bump in Vault internals has no impact (kms-wrapper uses no JWT/OIDC). |
 
 ## Open Questions
 
