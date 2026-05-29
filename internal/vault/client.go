@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/x509"
@@ -11,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
+	"time"
 
 	vaultapi "github.com/hashicorp/vault/api"
 
@@ -35,6 +38,8 @@ func (p TokenAuthProvider) Token() (string, error) {
 	return p.TokenValue, nil
 }
 
+// AppRoleAuthProvider is reserved for future AppRole authentication.
+// It is not yet implemented; NewClient returns an explicit error when it is used.
 type AppRoleAuthProvider struct{}
 
 func (AppRoleAuthProvider) Token() (string, error) { return "", ErrNotImplemented }
@@ -50,6 +55,9 @@ func NewClient(addr string, auth AuthProvider) (*Client, error) {
 	}
 	token, err := auth.Token()
 	if err != nil {
+		if errors.Is(err, ErrNotImplemented) {
+			return nil, errors.New("AppRoleAuthProvider is not yet implemented; use TokenAuthProvider")
+		}
 		return nil, err
 	}
 	cfg := vaultapi.DefaultConfig()
@@ -60,10 +68,43 @@ func NewClient(addr string, auth AuthProvider) (*Client, error) {
 	}
 	apiClient.SetToken(token)
 	c := &Client{api: apiClient, addr: addr}
-	if err := c.Health(); err != nil {
-		return nil, fmt.Errorf("vault unreachable at %s: %w", addr, err)
+	var lastErr error
+	for attempt := range 3 {
+		if attempt > 0 {
+			time.Sleep(time.Duration(1<<(attempt-1)) * time.Second)
+		}
+		if err := c.Health(); err == nil {
+			return c, nil
+		} else {
+			lastErr = err
+		}
 	}
-	return c, nil
+	return nil, fmt.Errorf("vault unreachable at %s after 3 attempts: %w", addr, lastErr)
+}
+
+// StartRenewal starts a background goroutine that renews the Vault token before expiry.
+// It is a no-op for non-renewable tokens (e.g., root tokens in dev mode).
+func (c *Client) StartRenewal(ctx context.Context) {
+	info, err := c.api.Auth().Token().LookupSelf()
+	if err != nil || info == nil {
+		return
+	}
+	renewable, _ := info.Data["renewable"].(bool)
+	if !renewable {
+		return
+	}
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				_, _ = c.api.Auth().Token().RenewSelf(0)
+			}
+		}
+	}()
 }
 
 func (c *Client) Health() error {
@@ -71,40 +112,36 @@ func (c *Client) Health() error {
 	return err
 }
 
-func (c *Client) CreateKey(path string) error {
+func (c *Client) CreateKey(ctx context.Context, path string) error {
 	if err := ValidateKeyPath(path); err != nil {
 		return err
 	}
-	_, err := c.api.Logical().Write(ToVaultPath(path), map[string]any{"type": "ecdsa-p256k1"})
+	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{"type": "ecdsa-p256k1"})
 	return mapVaultErr(path, err)
 }
 
-func (c *Client) GetPublicKey(path string) ([]byte, error) {
+func (c *Client) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
 	if err := ValidateKeyPath(path); err != nil {
 		return nil, err
 	}
-	secret, err := c.api.Logical().Read(ToVaultPath(path))
+	secret, err := c.api.Logical().ReadWithContext(ctx, ToVaultPath(path))
 	if err != nil {
 		return nil, mapVaultErr(path, err)
 	}
 	if secret == nil || secret.Data == nil {
 		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
 	}
-	publicKey, err := publicKeyFromSecret(secret.Data)
-	if err != nil {
-		return nil, err
-	}
-	return publicKey, nil
+	return publicKeyFromSecret(secret.Data)
 }
 
-func (c *Client) Sign(path string, hash []byte) (r, s *big.Int, err error) {
+func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error) {
 	if err := ValidateKeyPath(path); err != nil {
 		return nil, nil, err
 	}
 	if len(hash) != 32 {
 		return nil, nil, errors.New("payload must be 32 bytes (pre-hashed)")
 	}
-	secret, err := c.api.Logical().Write("transit/sign/"+path, map[string]any{
+	secret, err := c.api.Logical().WriteWithContext(ctx, "transit/sign/"+path, map[string]any{
 		"input":          base64.StdEncoding.EncodeToString(hash),
 		"hash_algorithm": "none",
 	})
@@ -132,6 +169,32 @@ func (c *Client) Sign(path string, hash []byte) (r, s *big.Int, err error) {
 	return parsed.R, parsed.S, nil
 }
 
+// ListKeys lists key names under the given prefix in Vault Transit.
+func (c *Client) ListKeys(ctx context.Context, prefix string) ([]string, error) {
+	path := "transit/keys"
+	if prefix != "" {
+		path = "transit/keys/" + prefix
+	}
+	secret, err := c.api.Logical().ListWithContext(ctx, path)
+	if err != nil {
+		return nil, err
+	}
+	if secret == nil || secret.Data == nil {
+		return nil, nil
+	}
+	rawKeys, ok := secret.Data["keys"].([]any)
+	if !ok {
+		return nil, nil
+	}
+	keys := make([]string, 0, len(rawKeys))
+	for _, k := range rawKeys {
+		if s, ok := k.(string); ok {
+			keys = append(keys, s)
+		}
+	}
+	return keys, nil
+}
+
 func mapVaultErr(path string, err error) error {
 	if err == nil {
 		return nil
@@ -147,15 +210,21 @@ func mapVaultErr(path string, err error) error {
 	}
 }
 
+// publicKeyFromSecret returns the public key for the latest key version.
 func publicKeyFromSecret(data map[string]any) ([]byte, error) {
 	if keys, ok := data["keys"].(map[string]any); ok {
+		var latestVer int
 		var chosen string
-		for _, v := range keys {
+		for k, v := range keys {
+			ver, _ := strconv.Atoi(k)
+			var pk string
 			if m, ok := v.(map[string]any); ok {
-				if pk, ok := m["public_key"].(string); ok {
-					chosen = pk
-				}
-			} else if pk, ok := v.(string); ok {
+				pk, _ = m["public_key"].(string)
+			} else {
+				pk, _ = v.(string)
+			}
+			if pk != "" && ver >= latestVer {
+				latestVer = ver
 				chosen = pk
 			}
 		}

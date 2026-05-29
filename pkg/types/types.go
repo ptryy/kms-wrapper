@@ -23,22 +23,18 @@ type CosmosSignRequest struct {
 	SignDoc  string `json:"sign_doc"`
 }
 
-type SignRequest struct {
-	EVM    *EVMSignRequest    `json:"evm,omitempty"`
-	Cosmos *CosmosSignRequest `json:"cosmos,omitempty"`
-}
-
 type SignatureParts struct {
 	R string `json:"r"`
 	S string `json:"s"`
-	V uint8  `json:"v"`
+	V uint64 `json:"v"`
 }
 
 type SignResponse struct {
-	SignedTx  string          `json:"signed_tx,omitempty"`
-	Signature any             `json:"signature,omitempty"`
-	PubKey    string          `json:"pub_key,omitempty"`
-	Parts     *SignatureParts `json:"signature_parts,omitempty"`
+	SignedTx      string          `json:"signed_tx,omitempty"`
+	Signature     any             `json:"signature,omitempty"`
+	PubKey        string          `json:"pub_key,omitempty"`
+	Parts         *SignatureParts `json:"signature_parts,omitempty"`
+	CosmosAddress string          `json:"cosmos_address,omitempty"`
 }
 
 type KeyInfo struct {

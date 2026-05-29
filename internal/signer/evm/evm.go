@@ -2,6 +2,7 @@ package evm
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"math/big"
@@ -12,8 +13,8 @@ import (
 )
 
 type Vault interface {
-	GetPublicKey(path string) ([]byte, error)
-	Sign(path string, hash []byte) (r, s *big.Int, err error)
+	GetPublicKey(ctx context.Context, path string) ([]byte, error)
+	Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error)
 }
 
 type Signer struct {
@@ -33,7 +34,7 @@ func DeriveEVMAddress(pubkey []byte) (string, error) {
 	return crypto.PubkeyToAddress(*pub).Hex(), nil
 }
 
-func (s *Signer) SignRawTx(keyPath string, chainID *big.Int, rawTx []byte) ([]byte, error) {
+func (s *Signer) SignRawTx(ctx context.Context, keyPath string, chainID *big.Int, rawTx []byte) ([]byte, error) {
 	var tx ethtypes.Transaction
 	if err := tx.UnmarshalBinary(rawTx); err != nil {
 		return nil, errors.New("invalid RLP encoding")
@@ -46,7 +47,7 @@ func (s *Signer) SignRawTx(keyPath string, chainID *big.Int, rawTx []byte) ([]by
 	}
 	signer := ethtypes.LatestSignerForChainID(chainID)
 	hash := signer.Hash(&tx).Bytes()
-	sig, err := s.signWithRecovery(keyPath, hash)
+	sig, err := s.signWithRecovery(ctx, keyPath, hash)
 	if err != nil {
 		return nil, err
 	}
@@ -57,24 +58,24 @@ func (s *Signer) SignRawTx(keyPath string, chainID *big.Int, rawTx []byte) ([]by
 	return signed.MarshalBinary()
 }
 
-func (s *Signer) SignPersonalMessage(keyPath string, msg []byte) ([]byte, error) {
+func (s *Signer) SignPersonalMessage(ctx context.Context, keyPath string, msg []byte) ([]byte, error) {
 	prefix := []byte("\x19Ethereum Signed Message:\n" + strconv.Itoa(len(msg)))
-	return s.signWithRecovery(keyPath, crypto.Keccak256(append(prefix, msg...)))
+	return s.signWithRecovery(ctx, keyPath, crypto.Keccak256(append(prefix, msg...)))
 }
 
-func (s *Signer) SignEIP712Digest(keyPath string, digest []byte) ([]byte, error) {
+func (s *Signer) SignEIP712Digest(ctx context.Context, keyPath string, digest []byte) ([]byte, error) {
 	if len(digest) != 32 {
 		return nil, errors.New("EIP-712 digest must be 32 bytes")
 	}
-	return s.signWithRecovery(keyPath, digest)
+	return s.signWithRecovery(ctx, keyPath, digest)
 }
 
-func (s *Signer) signWithRecovery(keyPath string, hash []byte) ([]byte, error) {
-	r, ss, err := s.vault.Sign(keyPath, hash)
+func (s *Signer) signWithRecovery(ctx context.Context, keyPath string, hash []byte) ([]byte, error) {
+	r, ss, err := s.vault.Sign(ctx, keyPath, hash)
 	if err != nil {
 		return nil, err
 	}
-	pub, err := s.vault.GetPublicKey(keyPath)
+	pub, err := s.vault.GetPublicKey(ctx, keyPath)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +92,8 @@ func (s *Signer) signWithRecovery(keyPath string, hash []byte) ([]byte, error) {
 	return nil, fmt.Errorf("could not recover signature for public key")
 }
 
+// NormalizeEthereumV converts recovery ID 0/1 to Ethereum v=27/28 for eth_sign (personal messages).
+// Do NOT apply this to EIP-712 digests — EIP-712 consumers expect raw v=0/1.
 func NormalizeEthereumV(sig []byte) []byte {
 	out := append([]byte(nil), sig...)
 	if len(out) == 65 && out[64] < 27 {

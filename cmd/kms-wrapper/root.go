@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -68,14 +71,16 @@ func serveCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.ErrOrStderr(), "starting gateway on %s\n", st.cfg.Gateway.Addr)
+			initLogger(st.cfg.LogLevel, cmd.ErrOrStderr())
+			c.StartRenewal(context.Background())
+			slog.Info("starting gateway", "addr", st.cfg.Gateway.Addr)
 			return gateway.New(st.cfg, c, evmsigner.New(c), cosmossigner.New(c)).ListenAndServe()
 		},
 	}
 }
 
 func keysCmd(st *cliState) *cobra.Command {
-	var path string
+	var path, prefix string
 	keys := &cobra.Command{Use: "keys", Short: "manage Vault Transit keys"}
 	create := &cobra.Command{
 		Use:   "create",
@@ -88,7 +93,7 @@ func keysCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.CreateKey(path); err != nil {
+			if err := c.CreateKey(cmd.Context(), path); err != nil {
 				return err
 			}
 			return printKeyInfo(cmd, c, path)
@@ -108,14 +113,33 @@ func keysCmd(st *cliState) *cobra.Command {
 			return printKeyInfo(cmd, c, path)
 		},
 	}
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "list keys by prefix",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c, err := st.client()
+			if err != nil {
+				return err
+			}
+			ks, err := c.ListKeys(cmd.Context(), prefix)
+			if err != nil {
+				return err
+			}
+			for _, k := range ks {
+				fmt.Fprintln(cmd.OutOrStdout(), k)
+			}
+			return nil
+		},
+	}
 	create.Flags().StringVar(&path, "path", "", "key path")
 	show.Flags().StringVar(&path, "path", "", "key path")
-	keys.AddCommand(create, show)
+	list.Flags().StringVar(&prefix, "prefix", "", "key path prefix (optional)")
+	keys.AddCommand(create, show, list)
 	return keys
 }
 
 func printKeyInfo(cmd *cobra.Command, c *vault.Client, path string) error {
-	pub, err := c.GetPublicKey(path)
+	pub, err := c.GetPublicKey(cmd.Context(), path)
 	if err != nil {
 		if errors.Is(err, types.ErrNotFound) {
 			return fmt.Errorf("key not found: %s", path)
@@ -161,7 +185,7 @@ func signEVMCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := evmsigner.New(c).SignRawTx(path, big.NewInt(chainID), raw)
+			out, err := evmsigner.New(c).SignRawTx(cmd.Context(), path, big.NewInt(chainID), raw)
 			if err != nil {
 				return err
 			}
@@ -196,17 +220,22 @@ func signCosmosCmd(st *cliState) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				sig, pub, err = signer.SignDirect(path, doc)
+				sig, pub, err = signer.SignDirect(cmd.Context(), path, doc)
 			case "AMINO_JSON":
-				sig, pub, err = signer.SignAmino(path, []byte(signDoc))
+				sig, pub, err = signer.SignAmino(cmd.Context(), path, []byte(signDoc))
 			default:
 				return errors.New("unsupported sign_mode")
 			}
 			if err != nil {
 				return err
 			}
-			_ = hrp
-			fmt.Fprintf(cmd.OutOrStdout(), "signature: %s\npub_key: %s\n", base64.StdEncoding.EncodeToString(sig), base64.StdEncoding.EncodeToString(pub))
+			fmt.Fprintf(cmd.OutOrStdout(), "signature: %s\npub_key: %s\n",
+				base64.StdEncoding.EncodeToString(sig),
+				base64.StdEncoding.EncodeToString(pub),
+			)
+			if addr, err := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp); err == nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "cosmos_address: %s\n", addr)
+			}
 			return nil
 		},
 	}
@@ -238,6 +267,21 @@ func healthCmd(st *cliState) *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func initLogger(level string, w io.Writer) {
+	var lvl slog.Level
+	switch level {
+	case "debug":
+		lvl = slog.LevelDebug
+	case "warn":
+		lvl = slog.LevelWarn
+	case "error":
+		lvl = slog.LevelError
+	default:
+		lvl = slog.LevelInfo
+	}
+	slog.SetDefault(slog.New(slog.NewJSONHandler(w, &slog.HandlerOptions{Level: lvl})))
 }
 
 func expandHome(path string) string {

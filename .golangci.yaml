@@ -4,5 +4,7 @@ linters:
     - govet
     - ineffassign
     - staticcheck
+    - gosec
+    - noctx
 run:
   timeout: 5m

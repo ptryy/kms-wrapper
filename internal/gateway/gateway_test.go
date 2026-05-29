@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -14,16 +15,29 @@ import (
 )
 
 type healthMock struct{ err error }
+
 func (h healthMock) Health() error { return h.err }
 
 type evmMock struct{}
-func (evmMock) SignRawTx(string, *big.Int, []byte) ([]byte, error) { return nil, errors.New("mock raw unsupported") }
-func (evmMock) SignPersonalMessage(string, []byte) ([]byte, error) { return bytes.Repeat([]byte{1}, 65), nil }
-func (evmMock) SignEIP712Digest(string, []byte) ([]byte, error) { return bytes.Repeat([]byte{2}, 65), nil }
+
+func (evmMock) SignRawTx(_ context.Context, _ string, _ *big.Int, _ []byte) ([]byte, error) {
+	return nil, errors.New("mock raw unsupported")
+}
+func (evmMock) SignPersonalMessage(_ context.Context, _ string, _ []byte) ([]byte, error) {
+	return bytes.Repeat([]byte{1}, 65), nil
+}
+func (evmMock) SignEIP712Digest(_ context.Context, _ string, _ []byte) ([]byte, error) {
+	return bytes.Repeat([]byte{2}, 65), nil
+}
 
 type cosmosMock struct{}
-func (cosmosMock) SignDirect(string, []byte) ([]byte, []byte, error) { return []byte("sig"), []byte("pub"), nil }
-func (cosmosMock) SignAmino(string, []byte) ([]byte, []byte, error) { return []byte("sig"), []byte("pub"), nil }
+
+func (cosmosMock) SignDirect(_ context.Context, _ string, _ []byte) ([]byte, []byte, error) {
+	return []byte("sig"), bytes.Repeat([]byte{3}, 33), nil
+}
+func (cosmosMock) SignAmino(_ context.Context, _ string, _ []byte) ([]byte, []byte, error) {
+	return []byte("sig"), bytes.Repeat([]byte{3}, 33), nil
+}
 
 func TestGatewayAuthHealthAndSign(t *testing.T) {
 	cfg := config.Default()

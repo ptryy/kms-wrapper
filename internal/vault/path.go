@@ -2,7 +2,6 @@ package vault
 
 import (
 	"errors"
-	"log"
 	"regexp"
 	"strings"
 )
@@ -25,9 +24,6 @@ func ValidateKeyPath(path string) error {
 		if !segmentRE.MatchString(part) {
 			return errors.New("key path segments must match [a-z0-9_-]")
 		}
-	}
-	if _, ok := reservedChains[parts[1]]; !ok {
-		log.Printf("unknown chain identifier: %s", parts[1])
 	}
 	return nil
 }

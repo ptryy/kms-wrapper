@@ -14,8 +14,12 @@ type Config struct {
 		Token string `mapstructure:"token"`
 	} `mapstructure:"vault"`
 	Gateway struct {
-		Addr  string `mapstructure:"addr"`
-		Token string `mapstructure:"token"`
+		Addr        string  `mapstructure:"addr"`
+		Token       string  `mapstructure:"token"`
+		TLSCertFile string  `mapstructure:"tls_cert_file"`
+		TLSKeyFile  string  `mapstructure:"tls_key_file"`
+		RateLimit   float64 `mapstructure:"rate_limit"`
+		RateBurst   int     `mapstructure:"rate_burst"`
 	} `mapstructure:"gateway"`
 	LogLevel string `mapstructure:"log_level"`
 }
@@ -23,6 +27,8 @@ type Config struct {
 func Default() Config {
 	var cfg Config
 	cfg.Gateway.Addr = "127.0.0.1:8080"
+	cfg.Gateway.RateLimit = 100
+	cfg.Gateway.RateBurst = 20
 	cfg.LogLevel = "info"
 	return cfg
 }
@@ -34,11 +40,17 @@ func Load(path string) (Config, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
 	v.SetDefault("gateway.addr", "127.0.0.1:8080")
+	v.SetDefault("gateway.rate_limit", 100)
+	v.SetDefault("gateway.rate_burst", 20)
 	v.SetDefault("log_level", "info")
 	_ = v.BindEnv("vault.addr", "KMS_VAULT_ADDR", "VAULT_ADDR")
 	_ = v.BindEnv("vault.token", "KMS_VAULT_TOKEN", "VAULT_TOKEN")
 	_ = v.BindEnv("gateway.addr", "KMS_GATEWAY_ADDR")
 	_ = v.BindEnv("gateway.token", "KMS_GATEWAY_TOKEN")
+	_ = v.BindEnv("gateway.tls_cert_file", "KMS_GATEWAY_TLS_CERT_FILE")
+	_ = v.BindEnv("gateway.tls_key_file", "KMS_GATEWAY_TLS_KEY_FILE")
+	_ = v.BindEnv("gateway.rate_limit", "KMS_GATEWAY_RATE_LIMIT")
+	_ = v.BindEnv("gateway.rate_burst", "KMS_GATEWAY_RATE_BURST")
 	_ = v.BindEnv("log_level", "KMS_LOG_LEVEL")
 	if path != "" {
 		v.SetConfigFile(path)
@@ -62,6 +74,9 @@ func (c Config) ValidateRuntime() error {
 	}
 	if c.Vault.Token == "" {
 		return errors.New("vault token is required")
+	}
+	if c.Gateway.Token == "" {
+		return errors.New("gateway token is required")
 	}
 	return nil
 }

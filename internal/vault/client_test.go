@@ -1,6 +1,7 @@
 package vault
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/asn1"
@@ -53,14 +54,15 @@ func TestClientMockVault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.CreateKey("proj/evm/alice"); err != nil || !created {
+	ctx := context.Background()
+	if err := c.CreateKey(ctx, "proj/evm/alice"); err != nil || !created {
 		t.Fatalf("CreateKey err=%v created=%v", err, created)
 	}
-	got, err := c.GetPublicKey("proj/evm/alice")
+	got, err := c.GetPublicKey(ctx, "proj/evm/alice")
 	if err != nil || hex.EncodeToString(got) != hex.EncodeToString(pub) {
 		t.Fatalf("GetPublicKey got %x err %v", got, err)
 	}
-	r, s, err := c.Sign("proj/evm/alice", crypto.Keccak256([]byte("msg")))
+	r, s, err := c.Sign(ctx, "proj/evm/alice", crypto.Keccak256([]byte("msg")))
 	if err != nil || r.Sign() == 0 || s.Sign() == 0 {
 		t.Fatalf("Sign r=%v s=%v err=%v", r, s, err)
 	}
@@ -68,7 +70,7 @@ func TestClientMockVault(t *testing.T) {
 
 func TestSignRequiresHashLength(t *testing.T) {
 	c := &Client{}
-	if _, _, err := c.Sign("proj/evm/alice", []byte{1}); err == nil || err.Error() != "payload must be 32 bytes (pre-hashed)" {
+	if _, _, err := c.Sign(context.Background(), "proj/evm/alice", []byte{1}); err == nil || err.Error() != "payload must be 32 bytes (pre-hashed)" {
 		t.Fatalf("unexpected err %v", err)
 	}
 }
