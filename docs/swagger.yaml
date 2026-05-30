@@ -1,0 +1,365 @@
+{
+    "components": {
+        "schemas": {
+            "github_com_ryan-truong_kms-wrapper_pkg_types.CosmosSignRequest": {
+                "properties": {
+                    "hrp": {
+                        "type": "string"
+                    },
+                    "key_path": {
+                        "type": "string"
+                    },
+                    "sign_doc": {
+                        "description": "SignDoc is base64 protobuf bytes when sign_mode=DIRECT and raw JSON when sign_mode=AMINO_JSON.",
+                        "type": "string"
+                    },
+                    "sign_mode": {
+                        "enum": [
+                            "DIRECT",
+                            "AMINO_JSON"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "key_path",
+                    "sign_doc",
+                    "sign_mode"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignEIP712Request": {
+                "properties": {
+                    "eip712_digest": {
+                        "pattern": "^(0x)?[0-9a-fA-F]{64}$",
+                        "type": "string"
+                    },
+                    "key_path": {
+                        "example": "proj-a/evm/alice",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "eip712_digest",
+                    "key_path"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignPersonalMessageRequest": {
+                "properties": {
+                    "key_path": {
+                        "example": "proj-a/evm/alice",
+                        "type": "string"
+                    },
+                    "personal_message": {
+                        "pattern": "^(0x)?[0-9a-fA-F]+$",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "key_path",
+                    "personal_message"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignRawTxRequest": {
+                "properties": {
+                    "chain_id": {
+                        "example": 1,
+                        "minimum": 1,
+                        "type": "integer"
+                    },
+                    "key_path": {
+                        "example": "proj-a/evm/alice",
+                        "type": "string"
+                    },
+                    "raw_tx": {
+                        "pattern": "^(0x)?[0-9a-fA-F]+$",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "chain_id",
+                    "key_path",
+                    "raw_tx"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse": {
+                "properties": {
+                    "error": {
+                        "example": "unauthorized",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "error"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse": {
+                "properties": {
+                    "cosmos_address": {
+                        "type": "string"
+                    },
+                    "pub_key": {
+                        "type": "string"
+                    },
+                    "signature": {},
+                    "signature_parts": {
+                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignatureParts"
+                    },
+                    "signed_tx": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.SignatureParts": {
+                "properties": {
+                    "r": {
+                        "type": "string"
+                    },
+                    "s": {
+                        "type": "string"
+                    },
+                    "v": {
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            }
+        },
+        "securitySchemes": {
+            "BearerAuth": {
+                "description": "Bearer token authorization using Authorization: Bearer \u003ctoken\u003e.",
+                "scheme": "bearer",
+                "type": "http"
+            }
+        }
+    },
+    "externalDocs": {
+        "description": "",
+        "url": ""
+    },
+    "info": {
+        "description": "REST gateway for health checks and multi-chain signing operations.",
+        "title": "KMS Wrapper API",
+        "version": "1.0"
+    },
+    "openapi": "3.0.3",
+    "paths": {
+        "/health": {
+            "get": {
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "503": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "additionalProperties": {
+                                        "type": "string"
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        },
+                        "description": "Service Unavailable"
+                    }
+                },
+                "security": [],
+                "summary": "Gateway health status",
+                "tags": [
+                    "health"
+                ]
+            }
+        },
+        "/sign/cosmos": {
+            "post": {
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.CosmosSignRequest",
+                                "description": "Cosmos sign payload",
+                                "summary": "body"
+                            }
+                        }
+                    },
+                    "description": "Cosmos sign payload",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Sign Cosmos payload",
+                "tags": [
+                    "signing"
+                ]
+            }
+        },
+        "/sign/evm": {
+            "post": {
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignRawTxRequest",
+                                        "description": "Raw-transaction payload",
+                                        "summary": "rawTx"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
+                                        "description": "Personal-message payload",
+                                        "summary": "personalMessage"
+                                    },
+                                    {
+                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignEIP712Request",
+                                        "description": "EIP-712 digest payload",
+                                        "summary": "eip712"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "description": "Raw-transaction payload | Personal-message payload | EIP-712 digest payload",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Sign EVM payload",
+                "tags": [
+                    "signing"
+                ]
+            }
+        }
+    },
+    "servers": [
+        {
+            "url": "localhost:8080/"
+        }
+    ]
+}
