@@ -69,6 +69,11 @@ func (k keyStoreMock) ListKeys(ctx context.Context, prefix string) ([]string, er
 type swaggerDoc struct {
 	OpenAPI string                 `json:"openapi"`
 	Paths   map[string]swaggerPath `json:"paths"`
+	Servers []swaggerServer        `json:"servers"`
+}
+
+type swaggerServer struct {
+	URL string `json:"url"`
 }
 
 type swaggerPath struct {
@@ -225,6 +230,30 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 	}
 	if !requiresBearer(doc.Paths["/sign/cosmos"].Post) {
 		t.Fatalf("expected /sign/cosmos to require BearerAuth, got %#v", doc.Paths["/sign/cosmos"].Post.Security)
+	}
+}
+
+func TestSwaggerDocUsesRequestOrigin(t *testing.T) {
+	h := newGatewayHandler(func(cfg *config.Config) {
+		cfg.Gateway.Addr = "127.0.0.1:3010"
+	})
+	rr := doRequest(h, http.MethodGet, "http://127.0.0.1:3010/swagger/doc.json", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("swagger doc code=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var doc swaggerDoc
+	if err := json.Unmarshal(rr.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal swagger doc: %v", err)
+	}
+	if len(doc.Servers) == 0 {
+		t.Fatalf("expected at least one server entry, got %#v", doc.Servers)
+	}
+	if got, want := doc.Servers[0].URL, "http://127.0.0.1:3010/"; got != want {
+		t.Fatalf("unexpected server url: got %q want %q", got, want)
+	}
+	if doc.Servers[0].URL == "http://localhost:8080/" {
+		t.Fatalf("swagger server url should not be fixed localhost:8080")
 	}
 }
 

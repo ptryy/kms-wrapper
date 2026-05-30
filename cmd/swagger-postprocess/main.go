@@ -56,6 +56,7 @@ func loadSpec(path string) (map[string]any, error) {
 
 func normalizeSpec(spec map[string]any) {
 	spec["openapi"] = "3.0.3"
+	normalizeServers(spec)
 
 	components, _ := spec["components"].(map[string]any)
 	securitySchemes, _ := components["securitySchemes"].(map[string]any)
@@ -78,6 +79,28 @@ func normalizeSpec(spec map[string]any) {
 			normalizeSecurity(operation)
 			normalizeRequestBody(operation)
 		}
+	}
+}
+
+func normalizeServers(spec map[string]any) {
+	serversAny, ok := spec["servers"]
+	if !ok {
+		return
+	}
+	servers, ok := serversAny.([]any)
+	if !ok {
+		return
+	}
+	for _, serverAny := range servers {
+		server, ok := serverAny.(map[string]any)
+		if !ok {
+			continue
+		}
+		url, _ := server["url"].(string)
+		if url == "" || strings.Contains(url, "://") || strings.HasPrefix(url, "/") {
+			continue
+		}
+		server["url"] = "http://" + url
 	}
 }
 

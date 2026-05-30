@@ -18,6 +18,7 @@ import (
 
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	httpSwagger "github.com/swaggo/http-swagger/v2"
+	swagv1 "github.com/swaggo/swag"
 	"golang.org/x/time/rate"
 
 	"github.com/ryan-truong/kms-wrapper/internal/config"
@@ -137,13 +138,67 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey))))
 	mux.Handle("GET /keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys))))
 	if s.cfg.Gateway.SwaggerEnabled {
-		var swagger http.Handler = httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+		var swaggerUI http.Handler = httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+		var swaggerDoc http.Handler = http.HandlerFunc(s.serveSwaggerDoc)
 		if s.cfg.Gateway.SwaggerAuth {
-			swagger = s.auth(swagger)
+			swaggerUI = s.auth(swaggerUI)
+			swaggerDoc = s.auth(swaggerDoc)
 		}
-		mux.Handle("GET /swagger/", swagger)
+		mux.Handle("GET /swagger/doc.json", swaggerDoc)
+		mux.Handle("GET /swagger/", swaggerUI)
 	}
 	return s.requestLogger(mux)
+}
+
+func (s *Server) serveSwaggerDoc(w http.ResponseWriter, r *http.Request) {
+	doc, err := swagv1.ReadDoc("swagger")
+	if err != nil {
+		slog.ErrorContext(r.Context(), "load swagger doc failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "swagger doc unavailable")
+		return
+	}
+	normalized, err := normalizeSwaggerDocServers(doc, requestOrigin(r))
+	if err != nil {
+		slog.ErrorContext(r.Context(), "normalize swagger doc failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "swagger doc unavailable")
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(normalized)
+}
+
+func normalizeSwaggerDocServers(doc, origin string) ([]byte, error) {
+	var spec map[string]any
+	if err := json.Unmarshal([]byte(doc), &spec); err != nil {
+		return nil, err
+	}
+	if origin != "" {
+		spec["servers"] = []map[string]string{
+			{"url": strings.TrimRight(origin, "/") + "/"},
+		}
+	}
+	return json.Marshal(spec)
+}
+
+func requestOrigin(r *http.Request) string {
+	host := strings.TrimSpace(r.Host)
+	if host == "" {
+		return ""
+	}
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
+		if idx := strings.Index(forwarded, ","); idx >= 0 {
+			forwarded = forwarded[:idx]
+		}
+		switch strings.ToLower(strings.TrimSpace(forwarded)) {
+		case "http", "https":
+			scheme = strings.ToLower(strings.TrimSpace(forwarded))
+		}
+	}
+	return scheme + "://" + host
 }
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {

@@ -2,6 +2,7 @@
 // @version 1.0
 // @description REST gateway for health checks and multi-chain signing operations.
 // @host localhost:8080
+// @schemes http
 // @BasePath /
 // @securityDefinitions.bearerauth BearerAuth
 // @description Bearer token authorization using Authorization: Bearer <token>.
