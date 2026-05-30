@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -15,12 +17,14 @@ type Config struct {
 		Token string `mapstructure:"token"`
 	} `mapstructure:"vault"`
 	Gateway struct {
-		Addr        string  `mapstructure:"addr"`
-		Token       string  `mapstructure:"token"`
-		TLSCertFile string  `mapstructure:"tls_cert_file"`
-		TLSKeyFile  string  `mapstructure:"tls_key_file"`
-		RateLimit   float64 `mapstructure:"rate_limit"`
-		RateBurst   int     `mapstructure:"rate_burst"`
+		Addr           string  `mapstructure:"addr"`
+		Token          string  `mapstructure:"token"`
+		TLSCertFile    string  `mapstructure:"tls_cert_file"`
+		TLSKeyFile     string  `mapstructure:"tls_key_file"`
+		RateLimit      float64 `mapstructure:"rate_limit"`
+		RateBurst      int     `mapstructure:"rate_burst"`
+		SwaggerEnabled bool    `mapstructure:"swagger_enabled"`
+		SwaggerAuth    bool    `mapstructure:"swagger_auth"`
 	} `mapstructure:"gateway"`
 	LogLevel string `mapstructure:"log_level"`
 }
@@ -30,6 +34,8 @@ func Default() Config {
 	cfg.Gateway.Addr = "127.0.0.1:8080"
 	cfg.Gateway.RateLimit = 100
 	cfg.Gateway.RateBurst = 20
+	cfg.Gateway.SwaggerEnabled = true
+	cfg.Gateway.SwaggerAuth = false
 	cfg.LogLevel = "info"
 	return cfg
 }
@@ -47,6 +53,8 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	v.SetDefault("gateway.addr", "127.0.0.1:8080")
 	v.SetDefault("gateway.rate_limit", 100)
 	v.SetDefault("gateway.rate_burst", 20)
+	v.SetDefault("gateway.swagger_enabled", true)
+	v.SetDefault("gateway.swagger_auth", false)
 	v.SetDefault("log_level", "info")
 	_ = v.BindEnv("vault.addr", "KMS_VAULT_ADDR", "VAULT_ADDR")
 	_ = v.BindEnv("vault.token", "KMS_VAULT_TOKEN", "VAULT_TOKEN")
@@ -56,7 +64,15 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	_ = v.BindEnv("gateway.tls_key_file", "KMS_GATEWAY_TLS_KEY_FILE")
 	_ = v.BindEnv("gateway.rate_limit", "KMS_GATEWAY_RATE_LIMIT")
 	_ = v.BindEnv("gateway.rate_burst", "KMS_GATEWAY_RATE_BURST")
+	_ = v.BindEnv("gateway.swagger_enabled", "KMS_GATEWAY_SWAGGER_ENABLED")
+	_ = v.BindEnv("gateway.swagger_auth", "KMS_GATEWAY_SWAGGER_AUTH")
 	_ = v.BindEnv("log_level", "KMS_LOG_LEVEL")
+	if err := validateBoolEnv("KMS_GATEWAY_SWAGGER_ENABLED"); err != nil {
+		return Config{}, err
+	}
+	if err := validateBoolEnv("KMS_GATEWAY_SWAGGER_AUTH"); err != nil {
+		return Config{}, err
+	}
 	if path != "" {
 		v.SetConfigFile(path)
 		if err := v.ReadInConfig(); err != nil {
@@ -85,6 +101,21 @@ func isFileNotFound(err error) bool {
 		return true
 	}
 	return errors.Is(err, fs.ErrNotExist)
+}
+
+func validateBoolEnv(key string) error {
+	raw, ok := os.LookupEnv(key)
+	if !ok {
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if _, err := strconv.ParseBool(raw); err != nil {
+		return fmt.Errorf("invalid boolean value for %s: %q", key, raw)
+	}
+	return nil
 }
 
 func (c Config) ValidateRuntime() error {

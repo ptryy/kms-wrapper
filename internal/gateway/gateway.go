@@ -17,6 +17,7 @@ import (
 	"time"
 
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	httpSwagger "github.com/swaggo/http-swagger/v2"
 	"golang.org/x/time/rate"
 
 	"github.com/ryan-truong/kms-wrapper/internal/config"
@@ -122,6 +123,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /health", s.health)
 	mux.Handle("POST /sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM))))
 	mux.Handle("POST /sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos))))
+	if s.cfg.Gateway.SwaggerEnabled {
+		var swagger http.Handler = httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+		if s.cfg.Gateway.SwaggerAuth {
+			swagger = s.auth(swagger)
+		}
+		mux.Handle("GET /swagger/", swagger)
+	}
 	return s.requestLogger(mux)
 }
 
@@ -161,6 +169,14 @@ func (s *Server) auth(next http.Handler) http.Handler {
 	})
 }
 
+// health godoc
+// @Summary Gateway health status
+// @Tags health
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 503 {object} map[string]string
+// @Security
+// @Router /health [get]
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if s.vault != nil && s.vault.Health() == nil {
@@ -171,6 +187,21 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "degraded", "vault": "unreachable"})
 }
 
+// signEVM godoc
+// @Summary Sign EVM payload
+// @Tags signing
+// @Accept json
+// @Produce json
+// @Param rawTx body apptypes.EVMSignRawTxRequest true "Raw-transaction payload"
+// @Param personalMessage body apptypes.EVMSignPersonalMessageRequest true "Personal-message payload"
+// @Param eip712 body apptypes.EVMSignEIP712Request true "EIP-712 digest payload"
+// @Success 200 {object} apptypes.SignResponse
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /sign/evm [post]
 func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req apptypes.EVMSignRequest
@@ -254,6 +285,19 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, apptypes.SignResponse{Signature: "0x" + hex.EncodeToString(sig)})
 }
 
+// signCosmos godoc
+// @Summary Sign Cosmos payload
+// @Tags signing
+// @Accept json
+// @Produce json
+// @Param body body apptypes.CosmosSignRequest true "Cosmos sign payload"
+// @Success 200 {object} apptypes.SignResponse
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /sign/cosmos [post]
 func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req apptypes.CosmosSignRequest
@@ -305,7 +349,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 func writeError(w http.ResponseWriter, status int, msg string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	_ = json.NewEncoder(w).Encode(apptypes.ErrorResponse{Error: msg})
 }
 
 func decodeHex(s string) ([]byte, error) {

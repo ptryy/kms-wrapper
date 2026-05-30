@@ -1,3 +1,11 @@
+// @title KMS Wrapper API
+// @version 1.0
+// @description REST gateway for health checks and multi-chain signing operations.
+// @host localhost:8080
+// @BasePath /
+// @securityDefinitions.bearerauth BearerAuth
+// @description Bearer token authorization using Authorization: Bearer <token>.
+// @security BearerAuth
 package main
 
 import (
@@ -16,6 +24,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	_ "github.com/ryan-truong/kms-wrapper/docs"
 	"github.com/ryan-truong/kms-wrapper/internal/config"
 	"github.com/ryan-truong/kms-wrapper/internal/gateway"
 	cosmossigner "github.com/ryan-truong/kms-wrapper/internal/signer/cosmos"

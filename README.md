@@ -91,6 +91,27 @@ Alternatively use `personal_message` or `eip712_digest`. Responses include `sign
 
 Use `sign_mode: "AMINO_JSON"` with a JSON `sign_doc` for legacy amino. Responses include base64 `signature` and compressed `pub_key`.
 
+## API documentation
+
+Swagger UI is served by the gateway at `GET /swagger/index.html` and the raw OpenAPI spec at `GET /swagger/doc.json`.
+
+Install the generator CLI once:
+
+```sh
+go install github.com/swaggo/swag/v2/cmd/swag@latest
+```
+
+Regenerate committed docs after editing handlers/types:
+
+```sh
+make swagger
+make swagger-check
+```
+
+In Swagger UI, click **Authorize** and enter `Bearer <KMS_GATEWAY_TOKEN>` to run authenticated `/sign/*` requests.
+
+For internet-exposed deployments, set `KMS_GATEWAY_SWAGGER_AUTH=true` to require bearer auth on `/swagger/*`, or `KMS_GATEWAY_SWAGGER_ENABLED=false` to disable the docs surface entirely.
+
 ## CLI
 
 ```sh
