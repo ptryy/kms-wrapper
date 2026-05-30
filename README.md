@@ -33,6 +33,10 @@ go run ./cmd/kms-wrapper keys create --path proj-a/evm/alice
 go run ./cmd/kms-wrapper serve
 ```
 
+The config file (`~/.kms-wrapper/config.yaml` by default, override with `--config`) is **optional**. If it is missing, the CLI prints a warning to stderr and continues using environment variables and built-in defaults. If the file exists but is malformed (invalid YAML, unreadable, etc.) the CLI exits non-zero with a `read config` error.
+
+Resolution precedence: **defaults → config file (if present) → env overrides**. After resolution, required runtime fields (`vault.addr`, `vault.token`, `gateway.token`) are validated and startup fails with a descriptive error if any are missing. `kms-wrapper health` distinguishes these config/validation errors from Vault connectivity failures.
+
 `make dev-up` is idempotent — re-running it rebuilds the plugin and re-registers it with a fresh SHA-256. `make dev-down` tears down the stack (in-memory dev mode, so all keys are lost).
 
 ### Manually inspecting the plugin

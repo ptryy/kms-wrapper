@@ -43,8 +43,12 @@ func NewRootCommand() *cobra.Command {
 	return cmd
 }
 
-func (s *cliState) load() error {
-	cfg, err := config.Load(expandHome(s.configPath))
+func (s *cliState) load(warnOut io.Writer) error {
+	cfg, err := config.Load(expandHome(s.configPath), func(msg string) {
+		if warnOut != nil {
+			fmt.Fprintln(warnOut, msg)
+		}
+	})
 	if err != nil {
 		return err
 	}
@@ -55,8 +59,8 @@ func (s *cliState) load() error {
 	return cfg.ValidateRuntime()
 }
 
-func (s *cliState) client() (*vault.Client, error) {
-	if err := s.load(); err != nil {
+func (s *cliState) client(warnOut io.Writer) (*vault.Client, error) {
+	if err := s.load(warnOut); err != nil {
 		return nil, err
 	}
 	return vault.NewClient(s.cfg.Vault.Addr, vault.TokenAuthProvider{TokenValue: s.cfg.Vault.Token})
@@ -67,7 +71,7 @@ func serveCmd(st *cliState) *cobra.Command {
 		Use:   "serve",
 		Short: "start REST gateway",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -89,7 +93,7 @@ func keysCmd(st *cliState) *cobra.Command {
 			if path == "" {
 				return errors.New("required flag missing: path")
 			}
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -106,7 +110,7 @@ func keysCmd(st *cliState) *cobra.Command {
 			if path == "" {
 				return errors.New("required flag missing: path")
 			}
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -117,7 +121,7 @@ func keysCmd(st *cliState) *cobra.Command {
 		Use:   "list",
 		Short: "list keys by prefix",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -177,7 +181,7 @@ func signEVMCmd(st *cliState) *cobra.Command {
 			if rawTx == "" {
 				return errors.New("required flag missing: raw-tx")
 			}
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -208,7 +212,7 @@ func signCosmosCmd(st *cliState) *cobra.Command {
 			if path == "" {
 				return errors.New("required flag missing: path")
 			}
-			c, err := st.client()
+			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -251,9 +255,9 @@ func healthCmd(st *cliState) *cobra.Command {
 		Use:   "health",
 		Short: "check Vault health",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := st.load(); err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "Vault: UNREACHABLE (%s)\n", st.cfg.Vault.Addr)
-				return err
+			if err := st.load(cmd.ErrOrStderr()); err != nil {
+				fmt.Fprintf(cmd.OutOrStdout(), "Config: INVALID (%s)\n", err)
+				return fmt.Errorf("config error: %w", err)
 			}
 			c, err := vault.NewClient(st.cfg.Vault.Addr, vault.TokenAuthProvider{TokenValue: st.cfg.Vault.Token})
 			if err != nil || c.Health() != nil {

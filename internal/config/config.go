@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -33,7 +34,11 @@ func Default() Config {
 	return cfg
 }
 
-func Load(path string) (Config, error) {
+// Load reads configuration from `path` (if present), env vars, and defaults.
+// A missing file at `path` is non-fatal: onWarn is invoked with a message and
+// resolution continues using env/defaults. Malformed or unreadable files are
+// fatal. onWarn may be nil.
+func Load(path string, onWarn func(string)) (Config, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
 	v.SetEnvPrefix("KMS")
@@ -55,8 +60,11 @@ func Load(path string) (Config, error) {
 	if path != "" {
 		v.SetConfigFile(path)
 		if err := v.ReadInConfig(); err != nil {
-			var notFound viper.ConfigFileNotFoundError
-			if !errors.As(err, &notFound) {
+			if isFileNotFound(err) {
+				if onWarn != nil {
+					onWarn(fmt.Sprintf("warning: config file %q not found; falling back to env/defaults", path))
+				}
+			} else {
 				return Config{}, fmt.Errorf("read config: %w", err)
 			}
 		}
@@ -66,6 +74,17 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+// isFileNotFound returns true for the two error shapes viper can produce when a
+// config file is absent: ConfigFileNotFoundError (discovery flow) and a wrapped
+// fs.ErrNotExist (explicit SetConfigFile path).
+func isFileNotFound(err error) bool {
+	var notFound viper.ConfigFileNotFoundError
+	if errors.As(err, &notFound) {
+		return true
+	}
+	return errors.Is(err, fs.ErrNotExist)
 }
 
 func (c Config) ValidateRuntime() error {
