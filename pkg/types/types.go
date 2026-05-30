@@ -16,11 +16,32 @@ type EVMSignRequest struct {
 	EIP712Digest    string `json:"eip712_digest,omitempty"`
 }
 
+type EVMSignRawTxRequest struct {
+	KeyPath string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	ChainID int64  `json:"chain_id" binding:"required" minimum:"1" example:"1"`
+	RawTx   string `json:"raw_tx" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
+}
+
+type EVMSignPersonalMessageRequest struct {
+	KeyPath         string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	PersonalMessage string `json:"personal_message" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
+}
+
+type EVMSignEIP712Request struct {
+	KeyPath      string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	EIP712Digest string `json:"eip712_digest" binding:"required" pattern:"^(0x)?[0-9a-fA-F]{64}$"`
+}
+
 type CosmosSignRequest struct {
-	KeyPath  string `json:"key_path"`
-	HRP      string `json:"hrp"`
-	SignMode string `json:"sign_mode"`
-	SignDoc  string `json:"sign_doc"`
+	KeyPath  string `json:"key_path" binding:"required"`
+	HRP      string `json:"hrp,omitempty"`
+	SignMode string `json:"sign_mode" binding:"required" enums:"DIRECT,AMINO_JSON"`
+	// SignDoc is base64 protobuf bytes when sign_mode=DIRECT and raw JSON when sign_mode=AMINO_JSON.
+	SignDoc string `json:"sign_doc" binding:"required"`
+}
+
+type ErrorResponse struct {
+	Error string `json:"error" binding:"required" example:"unauthorized"`
 }
 
 type SignatureParts struct {

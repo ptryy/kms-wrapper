@@ -12,6 +12,10 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Install swag CLI
+        run: go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
+      - name: swagger-check
+        run: make swagger-check
       - run: go vet ./...
       - uses: golangci/golangci-lint-action@v6
         with:

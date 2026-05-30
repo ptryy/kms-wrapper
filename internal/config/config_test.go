@@ -126,3 +126,57 @@ func TestLoadNilOnWarnIsSafe(t *testing.T) {
 		t.Fatalf("nil onWarn should not cause failure, got: %v", err)
 	}
 }
+
+func TestLoadSwaggerConfigSources(t *testing.T) {
+	t.Run("defaults applied when unspecified", func(t *testing.T) {
+		t.Setenv("KMS_GATEWAY_SWAGGER_ENABLED", "")
+		t.Setenv("KMS_GATEWAY_SWAGGER_AUTH", "")
+		cfg, err := Load("", nil)
+		if err != nil {
+			t.Fatalf("load failed: %v", err)
+		}
+		if !cfg.Gateway.SwaggerEnabled {
+			t.Fatal("expected gateway.swagger_enabled default true")
+		}
+		if cfg.Gateway.SwaggerAuth {
+			t.Fatal("expected gateway.swagger_auth default false")
+		}
+	})
+
+	t.Run("env overrides yaml", func(t *testing.T) {
+		dir := t.TempDir()
+		cfgPath := filepath.Join(dir, "config.yaml")
+		content := `
+gateway:
+  swagger_enabled: false
+  swagger_auth: false
+`
+		if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("KMS_GATEWAY_SWAGGER_ENABLED", "")
+		t.Setenv("KMS_GATEWAY_SWAGGER_AUTH", "true")
+
+		cfg, err := Load(cfgPath, nil)
+		if err != nil {
+			t.Fatalf("load failed: %v", err)
+		}
+		if cfg.Gateway.SwaggerEnabled {
+			t.Fatal("expected gateway.swagger_enabled to stay false from YAML")
+		}
+		if !cfg.Gateway.SwaggerAuth {
+			t.Fatal("expected gateway.swagger_auth to be overridden by env var")
+		}
+	})
+
+	t.Run("malformed boolean env is rejected", func(t *testing.T) {
+		t.Setenv("KMS_GATEWAY_SWAGGER_ENABLED", "notabool")
+		_, err := Load("", nil)
+		if err == nil {
+			t.Fatal("expected invalid boolean env value to fail")
+		}
+		if !strings.Contains(err.Error(), "KMS_GATEWAY_SWAGGER_ENABLED") {
+			t.Fatalf("expected error to mention env var name, got: %v", err)
+		}
+	})
+}
