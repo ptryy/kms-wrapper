@@ -1,6 +1,6 @@
 services:
   vault:
-    image: hashicorp/vault:1.15
+    image: hashicorp/vault:1.17
     command: server -dev -dev-root-token-id=root -dev-listen-address=0.0.0.0:8200
     ports:
       - "8200:8200"
@@ -8,3 +8,7 @@ services:
       - IPC_LOCK
     environment:
       VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_LOCAL_CONFIG: |
+        plugin_directory = "/vault/plugins"
+    volumes:
+      - ./vault/plugins:/vault/plugins

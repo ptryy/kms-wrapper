@@ -8,8 +8,11 @@ func TestValidateKeyPath(t *testing.T) {
 			t.Fatalf("%s should be valid: %v", path, err)
 		}
 	}
-	if got := ToVaultPath("proj-a/evm/alice"); got != "transit/keys/proj-a/evm/alice" {
+	if got := ToVaultPath("proj-a/evm/alice"); got != "kms/keys/proj-a/evm/alice" {
 		t.Fatalf("unexpected vault path %s", got)
+	}
+	if got := ToSignPath("proj-a/evm/alice"); got != "kms/sign/proj-a/evm/alice" {
+		t.Fatalf("unexpected sign path %s", got)
 	}
 	cases := map[string]string{
 		"Proj A/EVM/Alice": "key path segments must match [a-z0-9_-]",

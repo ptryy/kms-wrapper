@@ -28,6 +28,14 @@ func ValidateKeyPath(path string) error {
 	return nil
 }
 
+// ToVaultPath returns the Vault logical path for the key entry inside the
+// kms-vault-plugin (`kms/keys/<path>`).
 func ToVaultPath(path string) string {
-	return "transit/keys/" + path
+	return "kms/keys/" + path
+}
+
+// ToSignPath returns the Vault logical path for the plugin's raw-sign endpoint
+// (`kms/sign/<path>`).
+func ToSignPath(path string) string {
+	return "kms/sign/" + path
 }

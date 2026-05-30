@@ -1,7 +1,7 @@
-path "transit/keys/proj-a/*" {
-  capabilities = ["create", "read", "update", "list"]
+path "kms/keys/proj-a/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "transit/sign/proj-a/*" {
+path "kms/sign/proj-a/*" {
   capabilities = ["update"]
 }

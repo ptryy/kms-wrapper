@@ -2,20 +2,15 @@ package vault
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/x509"
-	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	vaultapi "github.com/hashicorp/vault/api"
 
 	"github.com/ryan-truong/kms-wrapper/pkg/types"
@@ -112,14 +107,20 @@ func (c *Client) Health() error {
 	return err
 }
 
+// CreateKey requests the kms-vault-plugin to generate a new secp256k1 key at
+// the given path. Idempotent — plugin returns the existing key info if it
+// already exists.
 func (c *Client) CreateKey(ctx context.Context, path string) error {
 	if err := ValidateKeyPath(path); err != nil {
 		return err
 	}
-	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{"type": "ecdsa-p256k1"})
+	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{})
 	return mapVaultErr(path, err)
 }
 
+// GetPublicKey returns the 65-byte uncompressed secp256k1 public key for the
+// given key path. The plugin returns a compressed (33-byte) key; we decompress
+// here so downstream signers continue to receive the uncompressed form.
 func (c *Client) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
 	if err := ValidateKeyPath(path); err != nil {
 		return nil, err
@@ -131,9 +132,26 @@ func (c *Client) GetPublicKey(ctx context.Context, path string) ([]byte, error) 
 	if secret == nil || secret.Data == nil {
 		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
 	}
-	return publicKeyFromSecret(secret.Data)
+	compressedB64, ok := secret.Data["compressed_pub_key"].(string)
+	if !ok || compressedB64 == "" {
+		return nil, errors.New("plugin response missing compressed_pub_key")
+	}
+	compressed, err := base64.StdEncoding.DecodeString(compressedB64)
+	if err != nil {
+		return nil, fmt.Errorf("decode compressed_pub_key: %w", err)
+	}
+	if len(compressed) != 33 {
+		return nil, fmt.Errorf("expected 33-byte compressed pubkey, got %d", len(compressed))
+	}
+	pub, err := crypto.DecompressPubkey(compressed)
+	if err != nil {
+		return nil, fmt.Errorf("decompress secp256k1 pubkey: %w", err)
+	}
+	return crypto.FromECDSAPub(pub), nil
 }
 
+// Sign submits a pre-hashed 32-byte input to the kms-vault-plugin and returns
+// the (r, s) components of the resulting low-S-normalised secp256k1 signature.
 func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error) {
 	if err := ValidateKeyPath(path); err != nil {
 		return nil, nil, err
@@ -141,9 +159,8 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.
 	if len(hash) != 32 {
 		return nil, nil, errors.New("payload must be 32 bytes (pre-hashed)")
 	}
-	secret, err := c.api.Logical().WriteWithContext(ctx, "transit/sign/"+path, map[string]any{
-		"input":          base64.StdEncoding.EncodeToString(hash),
-		"hash_algorithm": "none",
+	secret, err := c.api.Logical().WriteWithContext(ctx, ToSignPath(path), map[string]any{
+		"input": hex.EncodeToString(hash),
 	})
 	if err != nil {
 		return nil, nil, mapVaultErr(path, err)
@@ -151,29 +168,27 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.
 	if secret == nil || secret.Data == nil {
 		return nil, nil, fmt.Errorf("%w: key not found during sign: %s", types.ErrNotFound, path)
 	}
-	sig, ok := secret.Data["signature"].(string)
-	if !ok || sig == "" {
-		return nil, nil, errors.New("vault signature missing")
+	rHex, _ := secret.Data["r"].(string)
+	sHex, _ := secret.Data["s"].(string)
+	if rHex == "" || sHex == "" {
+		return nil, nil, errors.New("plugin response missing r/s fields")
 	}
-	parts := strings.Split(sig, ":")
-	der, err := base64.StdEncoding.DecodeString(parts[len(parts)-1])
+	rBytes, err := hex.DecodeString(rHex)
 	if err != nil {
-		return nil, nil, fmt.Errorf("decode vault signature: %w", err)
+		return nil, nil, fmt.Errorf("decode signature r: %w", err)
 	}
-	var parsed struct {
-		R, S *big.Int
+	sBytes, err := hex.DecodeString(sHex)
+	if err != nil {
+		return nil, nil, fmt.Errorf("decode signature s: %w", err)
 	}
-	if _, err := asn1.Unmarshal(der, &parsed); err != nil {
-		return nil, nil, fmt.Errorf("decode DER signature: %w", err)
-	}
-	return parsed.R, parsed.S, nil
+	return new(big.Int).SetBytes(rBytes), new(big.Int).SetBytes(sBytes), nil
 }
 
-// ListKeys lists key names under the given prefix in Vault Transit.
+// ListKeys lists key names under the given prefix via the plugin's LIST endpoint.
 func (c *Client) ListKeys(ctx context.Context, prefix string) ([]string, error) {
-	path := "transit/keys"
+	path := "kms/keys"
 	if prefix != "" {
-		path = "transit/keys/" + prefix
+		path = "kms/keys/" + prefix
 	}
 	secret, err := c.api.Logical().ListWithContext(ctx, path)
 	if err != nil {
@@ -208,70 +223,4 @@ func mapVaultErr(path string, err error) error {
 	default:
 		return err
 	}
-}
-
-// publicKeyFromSecret returns the public key for the latest key version.
-func publicKeyFromSecret(data map[string]any) ([]byte, error) {
-	if keys, ok := data["keys"].(map[string]any); ok {
-		var latestVer int
-		var chosen string
-		for k, v := range keys {
-			ver, _ := strconv.Atoi(k)
-			var pk string
-			if m, ok := v.(map[string]any); ok {
-				pk, _ = m["public_key"].(string)
-			} else {
-				pk, _ = v.(string)
-			}
-			if pk != "" && ver >= latestVer {
-				latestVer = ver
-				chosen = pk
-			}
-		}
-		if chosen != "" {
-			return parsePublicKey(chosen)
-		}
-	}
-	if pk, ok := data["public_key"].(string); ok {
-		return parsePublicKey(pk)
-	}
-	return nil, errors.New("vault public key missing")
-}
-
-func parsePublicKey(s string) ([]byte, error) {
-	if block, _ := pem.Decode([]byte(s)); block != nil {
-		if pub, err := x509.ParsePKIXPublicKey(block.Bytes); err == nil {
-			if ecdsaPub, ok := pub.(*ecdsa.PublicKey); ok {
-				return elliptic.Marshal(ecdsaPub.Curve, ecdsaPub.X, ecdsaPub.Y), nil
-			}
-		}
-		return publicKeyFromSPKI(block.Bytes)
-	}
-	if raw, err := hex.DecodeString(strings.TrimPrefix(s, "0x")); err == nil && len(raw) == 65 {
-		return raw, nil
-	}
-	if raw, err := base64.StdEncoding.DecodeString(s); err == nil {
-		if len(raw) == 65 {
-			return raw, nil
-		}
-		if out, err := publicKeyFromSPKI(raw); err == nil {
-			return out, nil
-		}
-	}
-	return nil, errors.New("unsupported vault public key encoding")
-}
-
-func publicKeyFromSPKI(der []byte) ([]byte, error) {
-	var spki struct {
-		Algorithm        asn1.RawValue
-		SubjectPublicKey asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(der, &spki); err != nil {
-		return nil, err
-	}
-	pub := spki.SubjectPublicKey.Bytes
-	if len(pub) != 65 || pub[0] != 4 {
-		return nil, errors.New("public key is not uncompressed secp256k1")
-	}
-	return pub, nil
 }
