@@ -1,0 +1,33 @@
+# OS files
+.DS_Store
+
+# Local environment/config
+.env
+.env.*
+!.env.example
+config.yaml
+*.local.yaml
+
+# Go/build artifacts
+bin/
+kms-wrapper
+kms-vault-plugin
+vault/plugins/kms-vault-plugin
+*.test
+*.out
+*.prof
+coverage.out
+cover.out
+
+# Editor/tooling artifacts
+.vscode/
+.idea/
+.codegraph/
+
+# Logs/temp
+*.log
+tmp/
+
+# Documentation
+testing-guide.md
+TESTING_GUIDE.md
