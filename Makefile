@@ -32,4 +32,4 @@ dev-down:
 	docker compose down
 
 run-gateway:
-	go run ./cmd/kms-wrapper serve
+	go run ./cmd/kms-wrapper serve --config config.yaml

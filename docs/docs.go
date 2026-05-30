@@ -103,6 +103,76 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest": {
+                "properties": {
+                    "path": {
+                        "example": "proj-a/evm/alice",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "path"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateResponse": {
+                "properties": {
+                    "already_existed": {
+                        "example": false,
+                        "type": "boolean"
+                    },
+                    "cosmos_address": {
+                        "type": "string"
+                    },
+                    "evm_address": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "public_key_hex": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyInfo": {
+                "properties": {
+                    "cosmos_address": {
+                        "type": "string"
+                    },
+                    "evm_address": {
+                        "type": "string"
+                    },
+                    "path": {
+                        "type": "string"
+                    },
+                    "public_key_hex": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListResponse": {
+                "properties": {
+                    "count": {
+                        "example": 2,
+                        "type": "integer"
+                    },
+                    "keys": {
+                        "example": [
+                            "evm/alice",
+                            "cosmos/bob"
+                        ],
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "type": "object"
+            },
             "github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse": {
                 "properties": {
                     "cosmos_address": {
@@ -189,6 +259,265 @@ const docTemplate = `{
                 "summary": "Gateway health status",
                 "tags": [
                     "health"
+                ]
+            }
+        },
+        "/keys": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Optional path prefix",
+                        "example": "proj-a/",
+                        "in": "query",
+                        "name": "prefix",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyListResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "List Vault Transit keys by prefix",
+                "tags": [
+                    "keys"
+                ]
+            },
+            "post": {
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest",
+                                "description": "Key create payload",
+                                "summary": "body"
+                            }
+                        }
+                    },
+                    "description": "Key create payload",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Create a Vault Transit key",
+                "tags": [
+                    "keys"
+                ]
+            }
+        },
+        "/keys/info": {
+            "get": {
+                "parameters": [
+                    {
+                        "description": "Key path (format: {project}/{chain}/{username})",
+                        "example": "proj-a/evm/alice",
+                        "in": "query",
+                        "name": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyInfo"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Not Found"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Show a Vault Transit key",
+                "tags": [
+                    "keys"
                 ]
             }
         },
@@ -365,7 +694,7 @@ const docTemplate = `{
     },
     "servers": [
         {
-            "url": "localhost:8080/"
+            "url": "http://localhost:8080/"
         }
     ]
 }

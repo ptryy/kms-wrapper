@@ -64,3 +64,17 @@ type KeyInfo struct {
 	EVMAddress    string `json:"evm_address"`
 	CosmosAddress string `json:"cosmos_address"`
 }
+
+type KeyCreateRequest struct {
+	Path string `json:"path" binding:"required" example:"proj-a/evm/alice"`
+}
+
+type KeyCreateResponse struct {
+	KeyInfo
+	AlreadyExisted bool `json:"already_existed" example:"false"`
+}
+
+type KeyListResponse struct {
+	Keys  []string `json:"keys" example:"evm/alice,cosmos/bob"`
+	Count int      `json:"count" example:"2"`
+}

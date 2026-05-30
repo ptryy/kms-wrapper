@@ -2,6 +2,7 @@
 // @version 1.0
 // @description REST gateway for health checks and multi-chain signing operations.
 // @host localhost:8080
+// @schemes http
 // @BasePath /
 // @securityDefinitions.bearerauth BearerAuth
 // @description Bearer token authorization using Authorization: Bearer <token>.
@@ -27,6 +28,7 @@ import (
 	_ "github.com/ryan-truong/kms-wrapper/docs"
 	"github.com/ryan-truong/kms-wrapper/internal/config"
 	"github.com/ryan-truong/kms-wrapper/internal/gateway"
+	"github.com/ryan-truong/kms-wrapper/internal/keyinfo"
 	cosmossigner "github.com/ryan-truong/kms-wrapper/internal/signer/cosmos"
 	evmsigner "github.com/ryan-truong/kms-wrapper/internal/signer/evm"
 	"github.com/ryan-truong/kms-wrapper/internal/vault"
@@ -87,7 +89,7 @@ func serveCmd(st *cliState) *cobra.Command {
 			initLogger(st.cfg.LogLevel, cmd.ErrOrStderr())
 			c.StartRenewal(context.Background())
 			slog.Info("starting gateway", "addr", st.cfg.Gateway.Addr)
-			return gateway.New(st.cfg, c, evmsigner.New(c), cosmossigner.New(c)).ListenAndServe()
+			return gateway.New(st.cfg, c, c, evmsigner.New(c), cosmossigner.New(c)).ListenAndServe()
 		},
 	}
 }
@@ -152,22 +154,13 @@ func keysCmd(st *cliState) *cobra.Command {
 }
 
 func printKeyInfo(cmd *cobra.Command, c *vault.Client, path string) error {
-	pub, err := c.GetPublicKey(cmd.Context(), path)
+	info, err := keyinfo.For(cmd.Context(), c, path, keyinfo.DefaultHRP)
 	if err != nil {
 		if errors.Is(err, types.ErrNotFound) {
 			return fmt.Errorf("key not found: %s", path)
 		}
 		return err
 	}
-	evmAddr, err := evmsigner.DeriveEVMAddress(pub)
-	if err != nil {
-		return err
-	}
-	cosmosAddr, err := cosmossigner.DeriveCosmosAddress(pub, "cosmos")
-	if err != nil {
-		return err
-	}
-	info := types.KeyInfo{Path: path, PublicKeyHex: hex.EncodeToString(pub), EVMAddress: evmAddr, CosmosAddress: cosmosAddr}
 	return json.NewEncoder(cmd.OutOrStdout()).Encode(info)
 }
 

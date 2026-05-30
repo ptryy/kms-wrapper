@@ -41,9 +41,39 @@ func (cosmosMock) SignAmino(_ context.Context, _ string, _ []byte) ([]byte, []by
 	return []byte("sig"), bytes.Repeat([]byte{3}, 33), nil
 }
 
+type keyStoreMock struct {
+	createKey    func(ctx context.Context, path string) error
+	getPublicKey func(ctx context.Context, path string) ([]byte, error)
+	listKeys     func(ctx context.Context, prefix string) ([]string, error)
+}
+
+func (k keyStoreMock) CreateKey(ctx context.Context, path string) error {
+	if k.createKey == nil {
+		return errors.New("CreateKey not stubbed")
+	}
+	return k.createKey(ctx, path)
+}
+func (k keyStoreMock) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
+	if k.getPublicKey == nil {
+		return nil, errors.New("GetPublicKey not stubbed")
+	}
+	return k.getPublicKey(ctx, path)
+}
+func (k keyStoreMock) ListKeys(ctx context.Context, prefix string) ([]string, error) {
+	if k.listKeys == nil {
+		return nil, errors.New("ListKeys not stubbed")
+	}
+	return k.listKeys(ctx, prefix)
+}
+
 type swaggerDoc struct {
 	OpenAPI string                 `json:"openapi"`
 	Paths   map[string]swaggerPath `json:"paths"`
+	Servers []swaggerServer        `json:"servers"`
+}
+
+type swaggerServer struct {
+	URL string `json:"url"`
 }
 
 type swaggerPath struct {
@@ -69,12 +99,16 @@ type swaggerSchema struct {
 }
 
 func newGatewayHandler(opts ...func(*config.Config)) http.Handler {
+	return newGatewayHandlerWithKeys(keyStoreMock{}, opts...)
+}
+
+func newGatewayHandlerWithKeys(ks KeyStore, opts ...func(*config.Config)) http.Handler {
 	cfg := config.Default()
 	cfg.Gateway.Token = "secret"
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	return New(cfg, healthMock{}, evmMock{}, cosmosMock{}).Handler()
+	return New(cfg, healthMock{}, ks, evmMock{}, cosmosMock{}).Handler()
 }
 
 func doRequest(h http.Handler, method, path string, body []byte, auth bool) *httptest.ResponseRecorder {
@@ -196,6 +230,30 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 	}
 	if !requiresBearer(doc.Paths["/sign/cosmos"].Post) {
 		t.Fatalf("expected /sign/cosmos to require BearerAuth, got %#v", doc.Paths["/sign/cosmos"].Post.Security)
+	}
+}
+
+func TestSwaggerDocUsesRequestOrigin(t *testing.T) {
+	h := newGatewayHandler(func(cfg *config.Config) {
+		cfg.Gateway.Addr = "127.0.0.1:3010"
+	})
+	rr := doRequest(h, http.MethodGet, "http://127.0.0.1:3010/swagger/doc.json", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("swagger doc code=%d body=%s", rr.Code, rr.Body.String())
+	}
+
+	var doc swaggerDoc
+	if err := json.Unmarshal(rr.Body.Bytes(), &doc); err != nil {
+		t.Fatalf("unmarshal swagger doc: %v", err)
+	}
+	if len(doc.Servers) == 0 {
+		t.Fatalf("expected at least one server entry, got %#v", doc.Servers)
+	}
+	if got, want := doc.Servers[0].URL, "http://127.0.0.1:3010/"; got != want {
+		t.Fatalf("unexpected server url: got %q want %q", got, want)
+	}
+	if doc.Servers[0].URL == "http://localhost:8080/" {
+		t.Fatalf("swagger server url should not be fixed localhost:8080")
 	}
 }
 
