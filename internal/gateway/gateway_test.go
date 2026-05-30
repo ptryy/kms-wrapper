@@ -41,6 +41,31 @@ func (cosmosMock) SignAmino(_ context.Context, _ string, _ []byte) ([]byte, []by
 	return []byte("sig"), bytes.Repeat([]byte{3}, 33), nil
 }
 
+type keyStoreMock struct {
+	createKey    func(ctx context.Context, path string) error
+	getPublicKey func(ctx context.Context, path string) ([]byte, error)
+	listKeys     func(ctx context.Context, prefix string) ([]string, error)
+}
+
+func (k keyStoreMock) CreateKey(ctx context.Context, path string) error {
+	if k.createKey == nil {
+		return errors.New("CreateKey not stubbed")
+	}
+	return k.createKey(ctx, path)
+}
+func (k keyStoreMock) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
+	if k.getPublicKey == nil {
+		return nil, errors.New("GetPublicKey not stubbed")
+	}
+	return k.getPublicKey(ctx, path)
+}
+func (k keyStoreMock) ListKeys(ctx context.Context, prefix string) ([]string, error) {
+	if k.listKeys == nil {
+		return nil, errors.New("ListKeys not stubbed")
+	}
+	return k.listKeys(ctx, prefix)
+}
+
 type swaggerDoc struct {
 	OpenAPI string                 `json:"openapi"`
 	Paths   map[string]swaggerPath `json:"paths"`
@@ -69,12 +94,16 @@ type swaggerSchema struct {
 }
 
 func newGatewayHandler(opts ...func(*config.Config)) http.Handler {
+	return newGatewayHandlerWithKeys(keyStoreMock{}, opts...)
+}
+
+func newGatewayHandlerWithKeys(ks KeyStore, opts ...func(*config.Config)) http.Handler {
 	cfg := config.Default()
 	cfg.Gateway.Token = "secret"
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	return New(cfg, healthMock{}, evmMock{}, cosmosMock{}).Handler()
+	return New(cfg, healthMock{}, ks, evmMock{}, cosmosMock{}).Handler()
 }
 
 func doRequest(h http.Handler, method, path string, body []byte, auth bool) *httptest.ResponseRecorder {

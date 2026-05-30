@@ -21,12 +21,20 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/ryan-truong/kms-wrapper/internal/config"
+	"github.com/ryan-truong/kms-wrapper/internal/keyinfo"
 	cosmossigner "github.com/ryan-truong/kms-wrapper/internal/signer/cosmos"
 	"github.com/ryan-truong/kms-wrapper/internal/signer/evm"
+	"github.com/ryan-truong/kms-wrapper/internal/vault"
 	apptypes "github.com/ryan-truong/kms-wrapper/pkg/types"
 )
 
 type HealthChecker interface{ Health() error }
+
+type KeyStore interface {
+	CreateKey(ctx context.Context, path string) error
+	GetPublicKey(ctx context.Context, path string) ([]byte, error)
+	ListKeys(ctx context.Context, prefix string) ([]string, error)
+}
 
 type EVMSigner interface {
 	SignRawTx(ctx context.Context, keyPath string, chainID *big.Int, rawTx []byte) ([]byte, error)
@@ -52,6 +60,7 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 type Server struct {
 	cfg          config.Config
 	vault        HealthChecker
+	keys         KeyStore
 	evm          EVMSigner
 	cosmos       CosmosSigner
 	server       *http.Server
@@ -59,7 +68,7 @@ type Server struct {
 	expectedAuth string
 }
 
-func New(cfg config.Config, vault HealthChecker, evmSigner EVMSigner, cosmosSigner CosmosSigner) *Server {
+func New(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner EVMSigner, cosmosSigner CosmosSigner) *Server {
 	if cfg.Gateway.Addr == "" {
 		cfg.Gateway.Addr = "127.0.0.1:8080"
 	}
@@ -74,6 +83,7 @@ func New(cfg config.Config, vault HealthChecker, evmSigner EVMSigner, cosmosSign
 	s := &Server{
 		cfg:          cfg,
 		vault:        vault,
+		keys:         keys,
 		evm:          evmSigner,
 		cosmos:       cosmosSigner,
 		limiter:      rate.NewLimiter(rate.Limit(rl), burst),
@@ -123,6 +133,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /health", s.health)
 	mux.Handle("POST /sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM))))
 	mux.Handle("POST /sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos))))
+	mux.Handle("POST /keys", s.rateLimit(s.auth(http.HandlerFunc(s.createKey))))
+	mux.Handle("GET /keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey))))
+	mux.Handle("GET /keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys))))
 	if s.cfg.Gateway.SwaggerEnabled {
 		var swagger http.Handler = httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
 		if s.cfg.Gateway.SwaggerAuth {
@@ -339,6 +352,126 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 		PubKey:        base64.StdEncoding.EncodeToString(pub),
 		CosmosAddress: addr,
 	})
+}
+
+// createKey godoc
+// @Summary Create a Vault Transit key
+// @Tags keys
+// @Accept json
+// @Produce json
+// @Param body body apptypes.KeyCreateRequest true "Key create payload"
+// @Success 200 {object} apptypes.KeyCreateResponse
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 403 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /keys [post]
+func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var req apptypes.KeyCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if err := vault.ValidateKeyPath(req.Path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	alreadyExisted := false
+	if _, err := s.keys.GetPublicKey(r.Context(), req.Path); err == nil {
+		alreadyExisted = true
+	} else if !errors.Is(err, apptypes.ErrNotFound) {
+		s.writeVaultErr(w, r, err, req.Path, "GetPublicKey")
+		return
+	}
+
+	if err := s.keys.CreateKey(r.Context(), req.Path); err != nil {
+		s.writeVaultErr(w, r, err, req.Path, "CreateKey")
+		return
+	}
+
+	info, err := keyinfo.For(r.Context(), s.keys, req.Path, keyinfo.DefaultHRP)
+	if err != nil {
+		s.writeVaultErr(w, r, err, req.Path, "deriveKeyInfo")
+		return
+	}
+	writeJSON(w, apptypes.KeyCreateResponse{KeyInfo: info, AlreadyExisted: alreadyExisted})
+}
+
+// showKey godoc
+// @Summary Show a Vault Transit key
+// @Tags keys
+// @Produce json
+// @Param path query string true "Key path (format: {project}/{chain}/{username})" example(proj-a/evm/alice)
+// @Success 200 {object} apptypes.KeyInfo
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 403 {object} apptypes.ErrorResponse
+// @Failure 404 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /keys/info [get]
+func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if err := vault.ValidateKeyPath(path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP)
+	if err != nil {
+		s.writeVaultErr(w, r, err, path, "GetPublicKey")
+		return
+	}
+	writeJSON(w, info)
+}
+
+// listKeys godoc
+// @Summary List Vault Transit keys by prefix
+// @Tags keys
+// @Produce json
+// @Param prefix query string false "Optional path prefix" example(proj-a/)
+// @Success 200 {object} apptypes.KeyListResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 403 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /keys [get]
+func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
+	prefix := r.URL.Query().Get("prefix")
+	ks, err := s.keys.ListKeys(r.Context(), prefix)
+	if err != nil {
+		s.writeVaultErr(w, r, err, prefix, "ListKeys")
+		return
+	}
+	if ks == nil {
+		ks = []string{}
+	}
+	writeJSON(w, apptypes.KeyListResponse{Keys: ks, Count: len(ks)})
+}
+
+func (s *Server) writeVaultErr(w http.ResponseWriter, r *http.Request, err error, keyPath, op string) {
+	slog.ErrorContext(r.Context(), "key operation failed", "error", err, "key_path", keyPath, "op", op)
+	switch {
+	case errors.Is(err, apptypes.ErrNotFound):
+		writeError(w, http.StatusNotFound, "key not found: "+keyPath)
+	case errors.Is(err, apptypes.ErrPermission):
+		writeError(w, http.StatusForbidden, "permission denied")
+	default:
+		writeError(w, http.StatusInternalServerError, "vault error")
+	}
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

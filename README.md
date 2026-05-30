@@ -91,6 +91,32 @@ Alternatively use `personal_message` or `eip712_digest`. Responses include `sign
 
 Use `sign_mode: "AMINO_JSON"` with a JSON `sign_doc` for legacy amino. Responses include base64 `signature` and compressed `pub_key`.
 
+### Key management
+
+The gateway exposes the same key lifecycle as `kms-wrapper keys`. All three require `Authorization: Bearer <KMS_GATEWAY_TOKEN>` and share the `/sign/*` rate-limit budget (`gateway.rate_limit` / `gateway.rate_burst`).
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST   | `/keys` | Create a secp256k1 Transit key. Idempotent — re-create returns the existing key with `already_existed: true`. |
+| GET    | `/keys/info?path=<key-path>` | Show public key (hex), EVM address, and Cosmos bech32 address. |
+| GET    | `/keys?prefix=<prefix>` | List bare key names under prefix; `prefix` optional. |
+
+```sh
+# Create
+curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"path":"proj-a/evm/alice"}' \
+     http://127.0.0.1:8080/keys
+
+# Show
+curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
+     "http://127.0.0.1:8080/keys/info?path=proj-a/evm/alice"
+
+# List
+curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
+     "http://127.0.0.1:8080/keys?prefix=proj-a/"
+```
+
 ## API documentation
 
 Swagger UI is served by the gateway at `GET /swagger/index.html` and the raw OpenAPI spec at `GET /swagger/doc.json`.
