@@ -58,6 +58,39 @@ func (w *statusResponseWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+// methodNotAllowedRewriter intercepts a 405 emitted by http.ServeMux and
+// replaces the plain-text body with the gateway's standard JSON error shape.
+type methodNotAllowedRewriter struct {
+	http.ResponseWriter
+	swallowBody bool
+}
+
+func (w *methodNotAllowedRewriter) WriteHeader(status int) {
+	if status == http.StatusMethodNotAllowed {
+		h := w.ResponseWriter.Header()
+		h.Set("Content-Type", "application/json")
+		h.Del("Content-Length")
+		w.ResponseWriter.WriteHeader(status)
+		_, _ = w.ResponseWriter.Write([]byte("{\"error\":\"method not allowed\"}\n"))
+		w.swallowBody = true
+		return
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *methodNotAllowedRewriter) Write(b []byte) (int, error) {
+	if w.swallowBody {
+		return len(b), nil
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func json405Handler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&methodNotAllowedRewriter{ResponseWriter: w}, r)
+	})
+}
+
 type Server struct {
 	cfg          config.Config
 	vault        HealthChecker
@@ -138,16 +171,29 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey))))
 	mux.Handle("GET /keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys))))
 	if s.cfg.Gateway.SwaggerEnabled {
-		var swaggerUI http.Handler = httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+		swaggerUI := httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
+		// Rewrite "/swagger/" → "/swagger/index.html" so http-swagger serves the
+		// UI body directly with HTTP 200 instead of a cacheable 301 redirect.
+		// http-swagger matches on r.RequestURI, so rewrite that too.
+		swaggerRoot := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/swagger/" {
+				r2 := r.Clone(r.Context())
+				r2.URL.Path = "/swagger/index.html"
+				r2.RequestURI = "/swagger/index.html"
+				swaggerUI.ServeHTTP(w, r2)
+				return
+			}
+			swaggerUI.ServeHTTP(w, r)
+		}))
 		var swaggerDoc http.Handler = http.HandlerFunc(s.serveSwaggerDoc)
 		if s.cfg.Gateway.SwaggerAuth {
-			swaggerUI = s.auth(swaggerUI)
+			swaggerRoot = s.auth(swaggerRoot)
 			swaggerDoc = s.auth(swaggerDoc)
 		}
 		mux.Handle("GET /swagger/doc.json", swaggerDoc)
-		mux.Handle("GET /swagger/", swaggerUI)
+		mux.Handle("GET /swagger/", swaggerRoot)
 	}
-	return s.requestLogger(mux)
+	return s.requestLogger(json405Handler(mux))
 }
 
 func (s *Server) serveSwaggerDoc(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +242,8 @@ func requestOrigin(r *http.Request) string {
 		switch strings.ToLower(strings.TrimSpace(forwarded)) {
 		case "http", "https":
 			scheme = strings.ToLower(strings.TrimSpace(forwarded))
+		default:
+			slog.DebugContext(r.Context(), "ignoring unrecognised X-Forwarded-Proto", "value", forwarded)
 		}
 	}
 	return scheme + "://" + host

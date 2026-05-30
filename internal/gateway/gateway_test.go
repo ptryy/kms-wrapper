@@ -186,6 +186,34 @@ func TestSwaggerUIEnabledByDefault(t *testing.T) {
 	}
 }
 
+func TestSwaggerRootServesUIWithoutRedirect(t *testing.T) {
+	h := newGatewayHandler()
+	rr := doRequest(h, http.MethodGet, "/swagger/", nil, false)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected /swagger/ to return 200, got code=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Fatalf("expected text/html content-type, got %q", ct)
+	}
+	if loc := rr.Header().Get("Location"); loc != "" {
+		t.Fatalf("expected no Location header on /swagger/, got %q", loc)
+	}
+}
+
+func TestUnsupportedMethodReturnsJSON405(t *testing.T) {
+	h := newGatewayHandler()
+	rr := doRequest(h, http.MethodDelete, "/keys", nil, true)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected 405 for DELETE /keys, got code=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if ct := rr.Header().Get("Content-Type"); !strings.Contains(ct, "application/json") {
+		t.Fatalf("expected application/json content-type, got %q", ct)
+	}
+	if got, want := rr.Body.String(), "{\"error\":\"method not allowed\"}\n"; got != want {
+		t.Fatalf("unexpected 405 body: got %q want %q", got, want)
+	}
+}
+
 func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 	h := newGatewayHandler()
 	doc := loadSwaggerDoc(t, h, false)

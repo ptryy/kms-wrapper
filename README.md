@@ -119,7 +119,9 @@ curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
 
 ## API documentation
 
-Swagger UI is served by the gateway at `GET /swagger/index.html` and the raw OpenAPI spec at `GET /swagger/doc.json`.
+Swagger UI is served by the gateway at `GET /swagger/index.html` (or `GET /swagger/`) and the raw OpenAPI spec at `GET /swagger/doc.json`.
+
+The committed `docs/swagger.json` is the regenerated artifact for codegen and Postman import. Its `servers[0].url` is the placeholder `http://localhost:8080/` — valid OpenAPI, but a static stand-in. The **runtime** `GET /swagger/doc.json` endpoint is the source of truth for the live UI: it rewrites `servers[0].url` on every request to reflect the gateway's actual origin (honouring `X-Forwarded-Proto` and `Host` when behind a reverse proxy).
 
 Install the generator CLI once:
 
