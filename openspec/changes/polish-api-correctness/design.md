@@ -41,7 +41,7 @@ if err != nil { return ..., fmt.Errorf("canonicalise amino sign doc: %w", err) }
 // hash sorted bytes with SHA-256, then sign
 ```
 
-Additionally, before passing to `SortJSON`, the function SHALL `json.NewDecoder(bytes).DisallowUnknownFields()`-style detect duplicate keys (Go's stdlib does not flag duplicates; use a custom scanner or the `tidwall/gjson` `Valid` plus a recursive uniqueness check). Reject duplicate-key inputs with HTTP 400.
+Additionally, before passing to `SortJSON`, the function SHALL detect duplicate JSON keys in the raw bytes (Go's stdlib does not flag duplicates; walk the raw bytes with a streaming `json.Decoder` in token mode, tracking seen keys per object scope, or use a recursive uniqueness check over the parsed token stream). Reject duplicate-key inputs with HTTP 400.
 
 **Rationale:** `sdk.SortJSON` is the exact code cosmos-sdk uses to re-derive sign bytes during signature verification. Using it eliminates the entire class of "Go-canonical vs Cosmos-canonical" mismatch. Duplicate-key rejection prevents the "last-wins ambiguity" footgun (the same input bytes can deserialise into two different documents under different parsers).
 

@@ -37,7 +37,7 @@ Implementation of this change SHALL NOT begin until both upstream changes are me
 
 ## Impact
 
-- **Dependencies added**: `tyler-smith/go-bip39` (mnemonic entropy), `btcsuite/btcd/hdkeychain` or `cosmos/btcutil` (BIP44 derivation).
+- **Dependencies added**: `github.com/tyler-smith/go-bip39` (mnemonic entropy), `github.com/btcsuite/btcutil/hdkeychain` or `github.com/cosmos/btcutil` (BIP44 derivation).
 - **Vault version requirement**: Vault 1.17+ (plugin SDK). No bump beyond the existing requirement from `multi-chain-kms-gateway`.
 - **New Vault policy capabilities required**: `create` on `kms/keys/+/import`. The scoped policy installed by `harden-vault-backend`'s `vault/init.sh` SHALL be extended with this capability for import-capable tokens. (No `transit/*` paths are involved — the original Transit-wrapping design is superseded by D7.)
 - **No breaking changes** to existing endpoints or CLI subcommands.

@@ -28,7 +28,9 @@
 
 ## 5. Non-root token guard at startup
 
-- [ ] 5.1 In `cmd/kms-wrapper/root.go`, after `cfg, err := cliState.load(...)` returns, add a guard: if `cfg.Vault.Token` ∈ `{"", "root", "dev", "dev-token", "change-me"}` and `os.Getenv("KMS_DEV") != "true"`, exit with `"refusing to start with weak vault token; set KMS_DEV=true for local dev"`.
+- [ ] 5.1 In `cmd/kms-wrapper/root.go`, after `cfg, err := cliState.load(...)` returns, add two guards in order:
+  1. If `cfg.Vault.Token == ""`, exit unconditionally with `"vault token is required"` (no `KMS_DEV` bypass).
+  2. If `cfg.Vault.Token` ∈ `{"root", "dev", "dev-token", "change-me"}` and `os.Getenv("KMS_DEV") != "true"`, exit with `"refusing to start with weak vault token; set KMS_DEV=true for local dev"`.
 - [ ] 5.2 When `KMS_DEV=true` and the token is weak, emit `slog.Warn("running with weak vault token (KMS_DEV=true)")` once at startup.
 - [ ] 5.3 Apply the same guard logic to `serveCmd`, `keysCmd`, `signCmd`, `healthCmd` (any subcommand that constructs a `vault.NewClient`).
 - [ ] 5.4 Tests: `cmd/kms-wrapper/root_test.go` (or a new file) asserts startup failure when token=`root` and `KMS_DEV` unset, and startup success when `KMS_DEV=true`.

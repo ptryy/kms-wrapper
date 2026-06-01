@@ -39,7 +39,9 @@
 
 ## 6. Weak gateway-token startup guard
 
-- [ ] 6.1 In `cmd/kms-wrapper/root.go` (paired with the Vault-token guard from `harden-vault-backend`), add: if `cfg.Gateway.Token` ∈ `{"", "change-me", "dev", "dev-token", "password"}` and `KMS_DEV != "true"`, exit with `"refusing to start with weak gateway token; set KMS_DEV=true for local dev"`.
+- [ ] 6.1 In `cmd/kms-wrapper/root.go` (paired with the Vault-token guard from `harden-vault-backend`), add two guards in order:
+  1. If `cfg.Gateway.Token == ""`, exit unconditionally with `"gateway token is required"` (no `KMS_DEV` bypass).
+  2. If `cfg.Gateway.Token` ∈ `{"change-me", "dev", "dev-token", "password"}` and `KMS_DEV != "true"`, exit with `"refusing to start with weak gateway token; set KMS_DEV=true for local dev"`.
 - [ ] 6.2 Apply to all subcommands that start the gateway (`serve`).
 - [ ] 6.3 Test: startup failure on each weak literal; success when `KMS_DEV=true`; success when token is non-weak.
 

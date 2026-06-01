@@ -3,7 +3,7 @@
 > This change has hard dependencies on two upstream changes from the deep-review proposals batch. Implementation tasks below assume both are merged.
 
 - **`harden-vault-backend`** — provides plugin-side key-path validation (reused on the new `import` write path), the typed `*vaultapi.ResponseError`-based error mapping (consumed by task 2.x for 409 detection), the scoped Vault policy install in `vault/init.sh` (extended by task 0.5 and section 11), and the non-root-token guard (`KMS_DEV=true` escape hatch covers Docker dev).
-- **`polish-api-correctness`** — provides the `/v1/` route prefix and dual-mount pattern (new routes mount under `/v1/...`), `sdk.SortJSON` canonicalisation for AMINO mode (inherited by `/v1/sign/cosmos/partial`), the EVM oneOf discriminator pattern (not used by `/sign/evm/safe`, which is a dedicated endpoint), and the err-shadowing fix pattern (NEW CLI subcommands here SHALL NOT reintroduce the bug).
+- **`polish-api-correctness`** — provides the `/v1/` route prefix and dual-mount pattern (new routes mount under `/v1/...`), `cosmos-sdk/types.SortJSON` canonicalisation for AMINO mode (inherited by `/v1/sign/cosmos/partial`), the EVM oneOf discriminator pattern (not used by `/sign/evm/safe`, which is a dedicated endpoint), and the err-shadowing fix pattern (NEW CLI subcommands here SHALL NOT reintroduce the bug).
 
 Conflict-resolution rule if implementations interleave: typed-errors and `/v1/` paths win; this change is updated to follow.
 

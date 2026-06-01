@@ -5,11 +5,11 @@ The Cosmos signer SHALL accept an `StdSignDoc` (amino JSON), canonicalise it usi
 
 #### Scenario: Successful AMINO mode signing
 - **WHEN** a valid amino JSON `StdSignDoc` and key path are provided
-- **THEN** the system returns an `StdSignature` with the correct public key and signature bytes; the signed bytes are byte-equal to `sdk.SortJSON(input)` (NOT to Go `json.Marshal` of the parsed map)
+- **THEN** the system returns an `StdSignature` with the correct public key and signature bytes; the signed bytes are byte-equal to `types.SortJSON(input)` (NOT to Go `json.Marshal` of the parsed map)
 
 #### Scenario: Non-canonical amino JSON input
 - **WHEN** the input JSON has unsorted keys or trailing whitespace
-- **THEN** the system canonicalises via `sdk.SortJSON` before hashing — the canonical bytes are what the chain will re-derive on verification
+- **THEN** the system canonicalises via `types.SortJSON` before hashing — the canonical bytes are what the chain will re-derive on verification
 
 #### Scenario: Duplicate keys rejected
 - **WHEN** the input JSON contains a duplicate key at any object level (e.g. `{"a":1, "a":2}`)

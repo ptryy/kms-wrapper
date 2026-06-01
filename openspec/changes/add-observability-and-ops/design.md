@@ -75,7 +75,7 @@ The `path` label uses the matched route pattern (e.g. `/v1/sign/evm`), not the r
 
 **Decision:** When the per-principal limiter (from `harden-gateway-security`) returns false:
 - Write HTTP 429.
-- `slog.InfoContext(ctx, "rate limit exceeded", "path", r.URL.Path, "principal_class", "bearer_token")` — `info` not `warn` because rate limiting is expected behaviour under load.
+- `slog.InfoContext(ctx, "rate limit exceeded", "path", matchedRoutePattern, "reason", "rate_limited")` — `info` not `warn` because rate limiting is expected behaviour under load. Use the matched route pattern (e.g. `/v1/sign/evm`), not `r.URL.Path`, to keep log cardinality bounded.
 - Increment `kms_rate_limit_rejections_total{path=<matched-pattern>}`.
 
 **Rationale:** `info`-level logging plus counter means 429 storms are visible in Prometheus *without* spamming logs. Operators paging on `kms_rate_limit_rejections_total` rate-of-change is the recommended alert.
