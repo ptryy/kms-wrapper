@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: `kms-wrapper keys import` — import EVM private key
-The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain evm --private-key <hex>` to import an existing EVM raw private key into Vault Transit via the wrapping flow. On success, the CLI SHALL print the key path, derived EVM address, and `source: imported` confirmation.
+The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain evm --private-key <hex>` to import an existing EVM raw private key into Vault via the `kms-vault-plugin`'s direct import endpoint. On success, the CLI SHALL print the key path, derived EVM address, and `source: imported` confirmation, and exit 0. On any error (validation, Vault, plugin) the CLI SHALL exit with a non-zero code and print a descriptive message to stderr — no "partial success" output to stdout.
 
 #### Scenario: Successful EVM key import
 - **WHEN** `kms-wrapper keys import --path proj/evm/alice --chain evm --private-key <64-hex>` is run with Vault reachable and valid policy
@@ -9,15 +9,19 @@ The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain evm --p
 
 #### Scenario: Invalid private key
 - **WHEN** the provided hex string is not exactly 64 characters
-- **THEN** the CLI prints "error: EVM private key must be 64 hex characters (32 bytes)" and exits 1
+- **THEN** the CLI prints "error: EVM private key must be 64 hex characters (32 bytes)" to stderr and exits 1
 
 #### Scenario: Vault version too old
-- **WHEN** the Vault instance is < 1.11 (wrapping_key endpoint returns 404)
-- **THEN** the CLI prints "error: Vault 1.11+ required for key import" and exits 1
+- **WHEN** the Vault instance is older than the `kms-vault-plugin` SDK floor (Vault 1.17+)
+- **THEN** the CLI prints "error: Vault 1.17+ required for kms-vault-plugin" to stderr and exits 1
 
 #### Scenario: Key already exists at path
-- **WHEN** a key already exists at the given path in Vault
-- **THEN** the CLI prints "error: key already exists at path <path> — delete it first or choose a different path" and exits 1
+- **WHEN** a key already exists at the given path (the plugin returns HTTP 409 mapped to `types.ErrKeyExists` per `harden-vault-backend`'s typed-error pattern)
+- **THEN** the CLI prints "error: key already exists at path <path> — delete it first or choose a different path" to stderr and exits 1
+
+#### Scenario: Signer/plugin error exits non-zero with no stdout output
+- **WHEN** the import call fails for any reason (Vault unreachable, plugin error, policy denial)
+- **THEN** the CLI exits with a non-zero code, prints the error to stderr (wrapped as `"keys import: <reason>"`), and prints NOTHING to stdout — the err-shadowing pattern fixed in `polish-api-correctness` SHALL NOT be reintroduced here
 
 ---
 
@@ -47,7 +51,7 @@ The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain cosmos 
 ---
 
 ### Requirement: `kms-wrapper sign cosmos partial` — partial multisig signing
-The CLI SHALL provide `kms-wrapper sign cosmos partial --path <key-path> --mode <DIRECT|AMINO_JSON> --sign-doc <base64> --signer-index <N> --multisig-pubkeys <base64,...> --threshold <M>` to produce a partial Cosmos multisig signature.
+The CLI SHALL provide `kms-wrapper sign cosmos partial --path <key-path> --mode <DIRECT|AMINO_JSON> --sign-doc <base64> --signer-index <N> --multisig-pubkeys <base64,...> --threshold <M>` to produce a partial Cosmos multisig signature. The implementation SHALL use a single outer-scope `err` variable for the signing-call result (NOT shadowed inside a `case` block) — this is the err-shadowing pattern fixed by `polish-api-correctness` task 1.1 and SHALL NOT be reintroduced here.
 
 #### Scenario: Successful partial DIRECT sign
 - **WHEN** valid arguments are provided and the gateway returns a partial signature
@@ -55,7 +59,11 @@ The CLI SHALL provide `kms-wrapper sign cosmos partial --path <key-path> --mode 
 
 #### Scenario: Missing required flag
 - **WHEN** any of `--path`, `--mode`, `--sign-doc`, `--signer-index`, `--multisig-pubkeys`, or `--threshold` is omitted
-- **THEN** the CLI prints "required flag missing: <flag>" and exits 1
+- **THEN** the CLI prints "required flag missing: <flag>" to stderr and exits 1
+
+#### Scenario: Signer error exits non-zero with no stdout output
+- **WHEN** the partial-sign call fails for any reason (Vault error, mismatched signer_index, invalid sign_doc)
+- **THEN** the CLI exits with a non-zero code, prints the error to stderr (wrapped as `"sign cosmos partial: <reason>"`), and prints NOTHING to stdout
 
 ---
 
@@ -72,4 +80,8 @@ The CLI SHALL provide `kms-wrapper sign evm safe --path <key-path> --safe-tx-has
 
 #### Scenario: Missing required flag
 - **WHEN** `--path` or `--safe-tx-hash` is omitted
-- **THEN** the CLI prints "required flag missing: <flag>" and exits 1
+- **THEN** the CLI prints "required flag missing: <flag>" to stderr and exits 1
+
+#### Scenario: Signer error exits non-zero with no stdout output
+- **WHEN** the Safe-sign call fails for any reason (Vault error, key not found, invalid hash)
+- **THEN** the CLI exits with a non-zero code, prints the error to stderr (wrapped as `"sign evm safe: <reason>"`), and prints NOTHING to stdout

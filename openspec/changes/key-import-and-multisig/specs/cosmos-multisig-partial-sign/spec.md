@@ -4,7 +4,7 @@
 The system SHALL accept a `SignDoc` (protobuf-encoded, base64), the gateway's key path, a `signer_index` (zero-based position of the gateway's key in the multisig account's ordered public key list), and return a single `SignatureV2` with `SingleSignatureData` of mode `SIGN_MODE_DIRECT`. The system SHALL NOT assemble the full `MultiSignature` — that is the caller's responsibility.
 
 #### Scenario: Successful partial DIRECT sign
-- **WHEN** `POST /sign/cosmos/partial` is called with `{"key_path": "...", "sign_mode": "DIRECT", "sign_doc": "<base64>", "signer_index": 0, "multisig_pubkeys": ["<base64-compressed-pubkey1>", "<base64-compressed-pubkey2>"], "threshold": 2}`
+- **WHEN** `POST /v1/sign/cosmos/partial` is called with `{"key_path": "...", "sign_mode": "DIRECT", "sign_doc": "<base64>", "signer_index": 0, "multisig_pubkeys": ["<base64-compressed-pubkey1>", "<base64-compressed-pubkey2>"], "threshold": 2}`
 - **THEN** the gateway returns HTTP 200 with `{"signature": "<base64-SignatureV2>", "pub_key": "<base64-compressed-33-byte-pubkey>", "signer_index": 0}`
 
 #### Scenario: signer_index out of range
@@ -22,15 +22,19 @@ The system SHALL accept a `SignDoc` (protobuf-encoded, base64), the gateway's ke
 ---
 
 ### Requirement: Partial Cosmos multisig signature — SIGN_MODE_LEGACY_AMINO_JSON
-The system SHALL accept an `StdSignDoc` (amino JSON string), canonicalise it (sorted keys, no trailing whitespace), hash with SHA-256, sign via the Vault backend, and return a single partial amino-compatible signature. The caller assembles the full amino multisig.
+The system SHALL accept an `StdSignDoc` (amino JSON string), canonicalise it via cosmos-sdk's `types.SortJSON` (per the `cosmos-signer` capability as updated by `polish-api-correctness`), hash with SHA-256, sign via the Vault backend, and return a single partial amino-compatible signature. The caller assembles the full amino multisig.
 
 #### Scenario: Successful partial AMINO sign
-- **WHEN** `POST /sign/cosmos/partial` is called with `{"key_path": "...", "sign_mode": "AMINO_JSON", "sign_doc": "<amino-json-string>", "signer_index": 1, "multisig_pubkeys": [...], "threshold": 2}`
+- **WHEN** `POST /v1/sign/cosmos/partial` is called with `{"key_path": "...", "sign_mode": "AMINO_JSON", "sign_doc": "<amino-json-string>", "signer_index": 1, "multisig_pubkeys": [...], "threshold": 2}`
 - **THEN** the gateway returns HTTP 200 with `{"signature": "<base64-amino-sig>", "pub_key": "<base64-compressed-33-byte-pubkey>", "signer_index": 1}`
 
-#### Scenario: Non-canonical amino JSON (auto-canonicalised)
+#### Scenario: Non-canonical amino JSON (auto-canonicalised via sdk.SortJSON)
 - **WHEN** the amino JSON has unsorted keys or trailing whitespace
-- **THEN** the system canonicalises the JSON before hashing and returns the signature without error
+- **THEN** the system canonicalises the JSON via `cosmos-sdk/types.SortJSON` (the exact function the chain uses for signature verification) before hashing and returns the signature without error
+
+#### Scenario: Duplicate keys rejected (inherited from cosmos-signer)
+- **WHEN** the amino JSON contains a duplicate key at any nesting level
+- **THEN** the signer returns an error and NO signature is produced — per the `cosmos-signer` capability requirement added by `polish-api-correctness`
 
 ---
 

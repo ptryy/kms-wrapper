@@ -1,10 +1,10 @@
 ## ADDED Requirements
 
 ### Requirement: Sign Gnosis Safe transaction hash (safeTxHash)
-The system SHALL accept a pre-computed 32-byte Gnosis Safe transaction hash (`safeTxHash`, an EIP-712 digest) in hex format, sign it via the Vault Transit backend using the specified key path, and return a 65-byte Ethereum-compatible signature `[r(32) || s(32) || v(1)]`. The gateway SHALL NOT construct or validate Safe transaction parameters (to, value, data, nonce, etc.) — the caller is fully responsible for computing the correct `safeTxHash`.
+The system SHALL accept a pre-computed 32-byte Gnosis Safe transaction hash (`safeTxHash`, an EIP-712 digest) in hex format, sign it via the `kms-vault-plugin` using the specified key path, and return a 65-byte Ethereum-compatible signature `[r(32) || s(32) || v(1)]`. The gateway SHALL NOT construct or validate Safe transaction parameters (to, value, data, nonce, etc.) — the caller is fully responsible for computing the correct `safeTxHash`.
 
 #### Scenario: Successful Safe transaction sign
-- **WHEN** `POST /sign/evm/safe` is called with `{"key_path": "proj/evm/ops-signer", "safe_tx_hash": "0x<64-hex-chars>"}`
+- **WHEN** `POST /v1/sign/evm/safe` is called with `{"key_path": "proj/evm/ops-signer", "safe_tx_hash": "0x<64-hex-chars>"}`
 - **THEN** the gateway returns HTTP 200 with `{"signature": "0x<130-hex-chars>", "signer_address": "<EIP-55-checksummed-address>"}`
 
 #### Scenario: Invalid safe_tx_hash length
@@ -16,7 +16,7 @@ The system SHALL accept a pre-computed 32-byte Gnosis Safe transaction hash (`sa
 - **THEN** the gateway returns HTTP 400: `{"error": "safe_tx_hash must be a hex-encoded value"}`
 
 #### Scenario: key_path not found in Vault
-- **WHEN** the specified `key_path` does not exist in Vault Transit
+- **WHEN** the specified `key_path` does not exist in the plugin's logical storage (the typed-error mapping per `harden-vault-backend` maps the 404 to `types.ErrNotFound`)
 - **THEN** the gateway returns HTTP 404: `{"error": "key not found: <path>"}`
 
 #### Scenario: Missing required fields
@@ -26,12 +26,12 @@ The system SHALL accept a pre-computed 32-byte Gnosis Safe transaction hash (`sa
 ---
 
 ### Requirement: Audit log entry for Safe signing
-The system SHALL emit a structured log entry for every `POST /sign/evm/safe` request at `INFO` level, including: `key_path`, `signer_address`, `safe_tx_hash` (hex), and the request timestamp. The log entry SHALL NOT include the private key or signature bytes.
+The system SHALL emit a structured log entry for every `POST /v1/sign/evm/safe` request at `info` level (success) or `warn`/`error` level (failure), including: `key_path`, `signer_address`, `safe_tx_hash` (hex), `request_id` (from the request-ID middleware established by `add-observability-and-ops`), and the request timestamp. The log entry SHALL NOT include the private key or signature bytes.
 
-#### Scenario: Successful sign produces audit log
-- **WHEN** `POST /sign/evm/safe` completes successfully
-- **THEN** a structured log line is emitted: `{"level":"info","msg":"evm-safe-sign","key_path":"...","signer_address":"0x...","safe_tx_hash":"0x...","ts":"<RFC3339>"}`
+#### Scenario: Successful sign produces audit log with request_id
+- **WHEN** `POST /v1/sign/evm/safe` completes successfully
+- **THEN** a structured log line is emitted: `{"level":"info","msg":"evm-safe-sign","key_path":"...","signer_address":"0x...","safe_tx_hash":"0x...","request_id":"<uuid-or-inbound-id>","ts":"<RFC3339>"}`
 
 #### Scenario: Failed sign also produces audit log
-- **WHEN** `POST /sign/evm/safe` returns an error (key not found, Vault error, invalid input)
-- **THEN** a structured log line is emitted at `WARN` or `ERROR` level with `"error": "<reason>"` and the same fields (excluding signature)
+- **WHEN** `POST /v1/sign/evm/safe` returns an error (key not found, Vault error, invalid input)
+- **THEN** a structured log line is emitted at `warn` or `error` level with `"error": "<reason>"`, `"request_id": "<id>"`, and the same fields (excluding signature)

@@ -1,53 +1,49 @@
 ## ADDED Requirements
 
-### Requirement: Fetch Vault Transit wrapping key
-The system SHALL retrieve Vault's ephemeral RSA-4096 public wrapping key from `transit/wrapping_key` before any import operation. This wrapping key is used to encrypt the raw private key material before submission to Vault.
+### Requirement: Plugin direct import endpoint
+The `kms-vault-plugin` SHALL expose a `POST kms/keys/<path>/import` endpoint that accepts a raw 32-byte secp256k1 private key (hex-encoded in `private_key_hex`), validates it, derives the EVM address and compressed public key, and writes a `KeyEntry{Source: "imported", ImportedAt: now}` to Vault's encrypted logical storage. (The original Vault Transit RSA-OAEP wrapping flow is superseded by design decision D7 — Transit does not support secp256k1.)
 
-#### Scenario: Successful wrapping key retrieval
-- **WHEN** the Vault token has `read` capability on `transit/wrapping_key`
-- **THEN** the system returns the PEM-encoded RSA-4096 public key without error
+#### Scenario: Successful import via plugin endpoint
+- **WHEN** an authorized caller invokes `POST kms/keys/proj-a/evm/alice/import` with `{"private_key_hex": "<64-hex>"}` and that key path does not yet exist
+- **THEN** the plugin validates the scalar, derives the EVM address and compressed public key, writes the `KeyEntry` to logical storage with `Source: "imported"` and `ImportedAt: <RFC3339>`, and returns HTTP 200 with the key info (no key material echoed back)
 
-#### Scenario: Vault version too old (< 1.11)
-- **WHEN** the `transit/wrapping_key` endpoint returns HTTP 404
-- **THEN** the system returns a descriptive error: "Vault 1.11+ required for key import — transit/wrapping_key not found"
+#### Scenario: Key path already exists
+- **WHEN** the target key path already has a stored `KeyEntry`
+- **THEN** the plugin returns `logical.CodedError(409, "key already exists at <path>")` — HTTP 409. Import is NOT idempotent (unlike `create`). The Vault client's typed-error mapping (per `harden-vault-backend`) translates this to `types.ErrKeyExists`.
 
-#### Scenario: Insufficient Vault policy for wrapping key
-- **WHEN** the Vault token lacks `read` capability on `transit/wrapping_key`
-- **THEN** the system returns a permission error: "vault token cannot read transit/wrapping_key — update policy to include: path \"transit/wrapping_key\" { capabilities = [\"read\"] }"
+#### Scenario: Malformed key_path rejected before storage read
+- **WHEN** the `key_path` fails the `{project}/{chain}/{username}` validator (uppercase, fewer than 3 segments, `..`, etc.)
+- **THEN** the plugin returns HTTP 400 with the validator message and performs NO storage read or write — per `harden-vault-backend`'s plugin-side validation requirement
 
 ---
 
-### Requirement: Import EVM raw private key via Transit wrapping
-The system SHALL accept a hex-encoded 32-byte EVM private key, wrap it with the Vault ephemeral RSA-OAEP wrapping key (SHA-256), and submit the wrapped ciphertext to `transit/import/<path>` with `type=ecdsa-p256k1`. The private key SHALL exist in process memory only for the duration of the wrapping operation and SHALL be zeroed immediately after wrapping.
+### Requirement: Import EVM raw private key
+The system SHALL accept a hex-encoded 32-byte EVM private key, validate it is a valid secp256k1 scalar (`0 < k < n`), and submit it to the plugin's direct-import endpoint over the TLS-protected Vault API. The private key bytes SHALL exist in process memory only for the duration of the HTTPS request, SHALL be zeroed via `defer` immediately after the request returns, and SHALL never be written to logs or disk.
 
 #### Scenario: Successful EVM key import
 - **WHEN** a valid 64-hex-character (32-byte) private key is provided with a valid key path
-- **THEN** the key is imported into Vault Transit, the system returns the derived EVM address (EIP-55 checksummed) and `source: imported` confirmation, and the private key bytes are zeroed from memory
+- **THEN** the key is imported into the plugin, the system returns the derived EVM address (EIP-55 checksummed) and `source: imported` confirmation, and the private key bytes are zeroed from memory before the function returns
 
 #### Scenario: Invalid private key format
-- **WHEN** the provided private key is not exactly 64 hex characters
+- **WHEN** the provided private key is not exactly 64 hex characters (with optional `0x` prefix)
 - **THEN** the system returns an error before contacting Vault: "EVM private key must be 64 hex characters (32 bytes)"
 
 #### Scenario: Private key not on secp256k1 curve
-- **WHEN** the provided 32-byte value is not a valid secp256k1 scalar (> curve order)
+- **WHEN** the provided 32-byte value is zero, equal to the curve order, or greater than the curve order
 - **THEN** the system returns an error: "provided key is not a valid secp256k1 private key"
 
-#### Scenario: Key path already exists in Vault
-- **WHEN** the target key path already has a Transit key
-- **THEN** the system returns an error: "key already exists at path <path> — delete it first or choose a different path" (import is NOT idempotent, unlike key creation)
-
 #### Scenario: Import denied by Vault policy
-- **WHEN** the Vault token lacks `create` or `update` capability on `transit/import/<path>`
-- **THEN** the system surfaces the Vault permission error with path context
+- **WHEN** the Vault token lacks `create` capability on `kms/keys/<path>/import`
+- **THEN** the typed-error mapping (per `harden-vault-backend`) classifies the 403 as `types.ErrPermission`; the gateway/CLI surfaces a 403 with path context
 
 ---
 
 ### Requirement: Import Cosmos mnemonic-derived private key
-The system SHALL accept a BIP39 mnemonic (12 or 24 words) and a BIP44 derivation path, derive the secp256k1 private key in-memory, wrap it with the Vault wrapping key, and import it into Vault Transit. The mnemonic SHALL be zeroed from memory after derivation. The derived address SHALL be printed before import confirmation so the operator can verify correctness.
+The system SHALL accept a BIP39 mnemonic (12 or 24 words) and a BIP44 derivation path, derive the secp256k1 private key in-memory, and submit it to the plugin's direct-import endpoint. The mnemonic and intermediate seed bytes SHALL be zeroed from memory after derivation. The derived address SHALL be printed before import confirmation so the operator can verify correctness (in interactive CLI mode).
 
 #### Scenario: Successful Cosmos key import
 - **WHEN** a valid BIP39 mnemonic and derivation path (e.g. `m/44'/118'/0'/0/0`) are provided with a valid key path
-- **THEN** the system derives the private key, wraps and imports it into Vault Transit, returns the Cosmos bech32 address (using the HRP from the key path's chain segment or `--hrp` flag), and zeroes mnemonic and derived key from memory
+- **THEN** the system derives the private key, imports it into the plugin, returns the Cosmos bech32 address (using the HRP from the key path's chain segment or `--hrp` flag), and zeroes mnemonic and derived key from memory
 
 #### Scenario: Invalid mnemonic (wrong word count or invalid words)
 - **WHEN** the provided mnemonic has an invalid word count or contains words not in the BIP39 wordlist
@@ -67,17 +63,17 @@ The system SHALL accept a BIP39 mnemonic (12 or 24 words) and a BIP44 derivation
 
 ---
 
-### Requirement: Write import metadata to Vault KV
-After a successful Transit import, the system SHALL write a KV v2 metadata entry at `<kv-mount>/kms-metadata/<path>` with fields: `source` (`imported`), `chain` (from key path), `imported_at` (RFC3339 timestamp). Generated-key metadata SHALL write `source: generated` at key creation time (new to this change).
+### Requirement: Key provenance is read via plugin (no separate metadata store)
+After a successful import, key provenance (`source: imported`, `imported_at: <RFC3339>`) SHALL be readable via the plugin's `GET kms/keys/<path>` endpoint — populated by the plugin from its own stored `KeyEntry`. (No Vault KV mount is involved; the previous design that wrote a separate `secret/kms-metadata/<path>` entry is superseded by D9.)
 
-#### Scenario: Metadata written on import
-- **WHEN** an EVM or Cosmos key is successfully imported
-- **THEN** a KV entry at `secret/kms-metadata/<path>` is written with `source: imported` and `imported_at: <timestamp>`
+#### Scenario: Imported key shows source on read
+- **WHEN** `GET kms/keys/<path>` is called for a previously-imported key
+- **THEN** the response includes `source: "imported"`, `imported_at: <RFC3339>`, and `created_at: null`
 
-#### Scenario: Metadata KV write fails (non-fatal)
-- **WHEN** the KV write fails (e.g. insufficient policy on `secret/kms-metadata/*`)
-- **THEN** the import is considered successful (Transit key exists), but a warning is logged: "could not write import metadata: <reason>"
+#### Scenario: Generated key shows source on read
+- **WHEN** `GET kms/keys/<path>` is called for a previously-generated key
+- **THEN** the response includes `source: "generated"`, `created_at: <RFC3339>`, and `imported_at: null`
 
-#### Scenario: Metadata readable via `keys show`
+#### Scenario: `kms-wrapper keys show` surfaces provenance
 - **WHEN** `kms-wrapper keys show --path <path>` is run for an imported key
 - **THEN** the output includes `source: imported` and `imported_at: <timestamp>` alongside the public key and derived addresses
