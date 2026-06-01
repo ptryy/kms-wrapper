@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Bearer token authentication middleware
-The REST gateway SHALL require all non-health, non-metrics requests to include `Authorization: Bearer <token>` matching the value of `KMS_GATEWAY_TOKEN`. The comparison SHALL be performed in constant time over fixed-length HMAC-SHA256 digests of the supplied and configured tokens (using a server-side nonce generated at startup as the HMAC key), so the comparison does not short-circuit on unequal input lengths. Requests without a valid token SHALL be rejected with HTTP 401 and a single log line indicating the failure reason (`missing`, `bad-format`, or `mismatch`). The supplied token SHALL NOT appear in any log entry.
+The REST gateway SHALL require all non-health, non-livez, non-readyz, non-metrics requests to include `Authorization: Bearer <token>` matching the value of `KMS_GATEWAY_TOKEN`. The unauthenticated set is: `/health`, `/livez`, `/readyz`, and `/metrics` (the probe and observability endpoints introduced by `add-observability-and-ops`). The comparison SHALL be performed in constant time over fixed-length HMAC-SHA256 digests of the supplied and configured tokens (using a server-side nonce generated at startup as the HMAC key), so the comparison does not short-circuit on unequal input lengths. Requests without a valid token SHALL be rejected with HTTP 401 and a single log line indicating the failure reason (`missing`, `bad-format`, or `mismatch`). The supplied token SHALL NOT appear in any log entry.
 
 #### Scenario: Valid token
 - **WHEN** a request includes `Authorization: Bearer <correct-token>`
@@ -28,13 +28,15 @@ The REST gateway SHALL require all non-health, non-metrics requests to include `
 ### Requirement: Health endpoint
 The gateway SHALL expose `GET /health` without authentication. The response SHALL include Vault connectivity status. The endpoint SHALL be subject to a dedicated slow-path rate limiter (default 10 rps, burst 5, keyed on remote IP) and its result SHALL be cached for 1 second to absorb micro-bursts. When the slow-path limiter is exhausted, `/health` SHALL return HTTP 429 with body `{"error": "rate limit exceeded"}`.
 
+> **Superseded by `add-observability-and-ops`:** The response shape below (`ok`/`degraded`) is replaced by the `/readyz` shape (`ready`/`not_ready`) when `add-observability-and-ops` is applied. `/health` becomes an alias for `/readyz`. The rate-limit and caching requirements in this spec still apply.
+
 #### Scenario: Healthy
 - **WHEN** Vault is reachable and the token is valid
-- **THEN** `GET /health` returns HTTP 200 with `{"status": "ok", "vault": "reachable"}`
+- **THEN** `GET /health` returns HTTP 200 with `{"status": "ready"}` (once `add-observability-and-ops` is applied; `{"status": "ok", "vault": "reachable"}` before)
 
 #### Scenario: Vault unreachable
 - **WHEN** Vault cannot be reached
-- **THEN** `GET /health` returns HTTP 503 with `{"status": "degraded", "vault": "unreachable"}`
+- **THEN** `GET /health` returns HTTP 503 with `{"status": "not_ready", "reason": "vault_unreachable"}` (once `add-observability-and-ops` is applied; `{"status": "degraded", "vault": "unreachable"}` before)
 
 #### Scenario: Health response is cached for 1 second
 - **WHEN** `GET /health` is called twice within 1 second from any client(s)

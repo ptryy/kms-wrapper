@@ -26,7 +26,7 @@ The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain evm --p
 ---
 
 ### Requirement: `kms-wrapper keys import` — import Cosmos mnemonic-derived key
-The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain cosmos --mnemonic "<words>" --derivation-path <m/44'/118'/0'/0/0> [--hrp <bech32-prefix>]` to derive a secp256k1 private key from a BIP39 mnemonic and import it into Vault Transit. The CLI SHALL print the derived Cosmos bech32 address for operator confirmation before importing (in interactive mode).
+The CLI SHALL provide `kms-wrapper keys import --path <key-path> --chain cosmos --mnemonic "<words>" --derivation-path <m/44'/118'/0'/0/0> [--hrp <bech32-prefix>]` to derive a secp256k1 private key from a BIP39 mnemonic and import it into Vault via the `kms-vault-plugin`'s direct import endpoint (design D7 — the original Transit RSA-OAEP wrapping flow is superseded). The CLI SHALL print the derived Cosmos bech32 address for operator confirmation before importing (in interactive mode).
 
 #### Scenario: Successful Cosmos mnemonic import — interactive confirmation
 - **WHEN** the CLI derives the address and the operator types `y` at the confirmation prompt

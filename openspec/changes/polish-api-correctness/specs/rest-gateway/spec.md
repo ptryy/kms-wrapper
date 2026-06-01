@@ -136,7 +136,7 @@ Every public gateway route SHALL be registered at its bare path AND at the same 
 
 #### Scenario: Both forms resolve identically
 - **WHEN** an authorized client calls `POST /sign/evm` and `POST /v1/sign/evm` with the same body
-- **THEN** the two responses are byte-identical (same status, same body, same headers except for any timestamp)
+- **THEN** the two responses have the same status and body; headers are identical except: `Deprecation` and `Sunset` appear only on the bare-path response, and timestamp-valued headers (e.g. `Date`) may differ by wall-clock skew
 
 #### Scenario: OpenAPI spec uses `/v1/` paths
 - **WHEN** a client retrieves `GET /swagger/doc.json`

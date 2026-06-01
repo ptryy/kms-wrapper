@@ -122,3 +122,20 @@ When `gateway.swagger_enabled=true` and the listener starts successfully, the ga
 #### Scenario: No log when swagger disabled
 - **WHEN** `swagger_enabled=false`
 - **THEN** no Swagger UI URL log line is emitted at startup
+
+---
+
+### Requirement: Cross-change integration — probe endpoints bypass auth middleware
+These scenarios verify the combined behaviour of `harden-gateway-security` (auth middleware) and this change (probe endpoints). Both changes must be applied for these scenarios to be testable.
+
+#### Scenario: /livez is reachable without a token
+- **WHEN** `harden-gateway-security` auth middleware is active AND a client sends `GET /livez` with no `Authorization` header
+- **THEN** the gateway returns HTTP 200 with `{"status": "alive"}` — the auth middleware MUST NOT intercept probe endpoints
+
+#### Scenario: /readyz is reachable without a token
+- **WHEN** `harden-gateway-security` auth middleware is active AND a client sends `GET /readyz` with no `Authorization` header
+- **THEN** the gateway returns HTTP 200 or 503 (depending on Vault state) — the auth middleware MUST NOT intercept probe endpoints
+
+#### Scenario: /health alias returns the /readyz shape after both changes land
+- **WHEN** both `harden-gateway-security` and `add-observability-and-ops` are applied AND a client sends `GET /health`
+- **THEN** the response body is `{"status": "ready"}` (HTTP 200) or `{"status": "not_ready", "reason": "..."}` (HTTP 503) — the legacy `{"status": "ok", "vault": "reachable"}` shape from `harden-gateway-security` alone is superseded; `Deprecation: true` and `Sunset` headers are present
