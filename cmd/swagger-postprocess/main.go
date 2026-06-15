@@ -66,7 +66,7 @@ func normalizeSpec(spec map[string]any) {
 	}
 
 	paths, _ := spec["paths"].(map[string]any)
-	for _, pathValue := range paths {
+	for pathKey, pathValue := range paths {
 		operations, ok := pathValue.(map[string]any)
 		if !ok {
 			continue
@@ -78,6 +78,46 @@ func normalizeSpec(spec map[string]any) {
 			}
 			normalizeSecurity(operation)
 			normalizeRequestBody(operation)
+			if strings.HasSuffix(pathKey, "/sign/evm") {
+				injectEVMDiscriminator(operation)
+			}
+		}
+	}
+}
+
+// injectEVMDiscriminator adds a `discriminator` block to the EVM sign
+// request `oneOf` so OpenAPI codegen produces a sealed-class-style typed
+// client. Swag does not emit `discriminator` natively from struct tags.
+// Matching is keyed on `propertyName: "type"`; the mapping points at the
+// three variant schemas already produced by swag.
+func injectEVMDiscriminator(operation map[string]any) {
+	requestBody, ok := operation["requestBody"].(map[string]any)
+	if !ok {
+		return
+	}
+	content, ok := requestBody["content"].(map[string]any)
+	if !ok {
+		return
+	}
+	for _, mt := range content {
+		mediaType, ok := mt.(map[string]any)
+		if !ok {
+			continue
+		}
+		schema, ok := mediaType["schema"].(map[string]any)
+		if !ok {
+			continue
+		}
+		if _, exists := schema["oneOf"]; !exists {
+			continue
+		}
+		schema["discriminator"] = map[string]any{
+			"propertyName": "type",
+			"mapping": map[string]any{
+				"raw_tx":           "#/components/schemas/types.EVMSignRawTxRequest",
+				"personal_message": "#/components/schemas/types.EVMSignPersonalMessageRequest",
+				"eip712_digest":    "#/components/schemas/types.EVMSignEIP712Request",
+			},
 		}
 	}
 }

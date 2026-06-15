@@ -17,14 +17,18 @@ type Config struct {
 		Token string `mapstructure:"token"`
 	} `mapstructure:"vault"`
 	Gateway struct {
-		Addr           string  `mapstructure:"addr"`
-		Token          string  `mapstructure:"token"`
-		TLSCertFile    string  `mapstructure:"tls_cert_file"`
-		TLSKeyFile     string  `mapstructure:"tls_key_file"`
-		RateLimit      float64 `mapstructure:"rate_limit"`
-		RateBurst      int     `mapstructure:"rate_burst"`
-		SwaggerEnabled bool    `mapstructure:"swagger_enabled"`
-		SwaggerAuth    bool    `mapstructure:"swagger_auth"`
+		Addr             string   `mapstructure:"addr"`
+		Token            string   `mapstructure:"token"`
+		TLSCertFile      string   `mapstructure:"tls_cert_file"`
+		TLSKeyFile       string   `mapstructure:"tls_key_file"`
+		RateLimit        float64  `mapstructure:"rate_limit"`
+		RateBurst        int      `mapstructure:"rate_burst"`
+		HealthRateLimit  float64  `mapstructure:"health_rate_limit"`
+		HealthRateBurst  int      `mapstructure:"health_rate_burst"`
+		TrustedProxies   []string `mapstructure:"trusted_proxies"`
+		PublicURL        string   `mapstructure:"public_url"`
+		SwaggerEnabled   bool     `mapstructure:"swagger_enabled"`
+		SwaggerAuth      bool     `mapstructure:"swagger_auth"`
 	} `mapstructure:"gateway"`
 	LogLevel string `mapstructure:"log_level"`
 }
@@ -34,8 +38,10 @@ func Default() Config {
 	cfg.Gateway.Addr = "127.0.0.1:8080"
 	cfg.Gateway.RateLimit = 100
 	cfg.Gateway.RateBurst = 20
+	cfg.Gateway.HealthRateLimit = 10
+	cfg.Gateway.HealthRateBurst = 5
 	cfg.Gateway.SwaggerEnabled = true
-	cfg.Gateway.SwaggerAuth = false
+	cfg.Gateway.SwaggerAuth = true
 	cfg.LogLevel = "info"
 	return cfg
 }
@@ -53,8 +59,10 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	v.SetDefault("gateway.addr", "127.0.0.1:8080")
 	v.SetDefault("gateway.rate_limit", 100)
 	v.SetDefault("gateway.rate_burst", 20)
+	v.SetDefault("gateway.health_rate_limit", 10)
+	v.SetDefault("gateway.health_rate_burst", 5)
 	v.SetDefault("gateway.swagger_enabled", true)
-	v.SetDefault("gateway.swagger_auth", false)
+	v.SetDefault("gateway.swagger_auth", true)
 	v.SetDefault("log_level", "info")
 	_ = v.BindEnv("vault.addr", "KMS_VAULT_ADDR", "VAULT_ADDR")
 	_ = v.BindEnv("vault.token", "KMS_VAULT_TOKEN", "VAULT_TOKEN")
@@ -64,6 +72,9 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	_ = v.BindEnv("gateway.tls_key_file", "KMS_GATEWAY_TLS_KEY_FILE")
 	_ = v.BindEnv("gateway.rate_limit", "KMS_GATEWAY_RATE_LIMIT")
 	_ = v.BindEnv("gateway.rate_burst", "KMS_GATEWAY_RATE_BURST")
+	_ = v.BindEnv("gateway.health_rate_limit", "KMS_GATEWAY_HEALTH_RATE_LIMIT")
+	_ = v.BindEnv("gateway.health_rate_burst", "KMS_GATEWAY_HEALTH_RATE_BURST")
+	_ = v.BindEnv("gateway.public_url", "KMS_GATEWAY_PUBLIC_URL")
 	_ = v.BindEnv("gateway.swagger_enabled", "KMS_GATEWAY_SWAGGER_ENABLED")
 	_ = v.BindEnv("gateway.swagger_auth", "KMS_GATEWAY_SWAGGER_AUTH")
 	_ = v.BindEnv("log_level", "KMS_LOG_LEVEL")

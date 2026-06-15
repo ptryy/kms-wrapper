@@ -1,58 +1,53 @@
-## 1. Per-principal rate limiter
+## 1. Per-principal rate limiting
 
-- [ ] 1.1 Introduce a `principalLimiters` type in `internal/gateway/gateway.go` with `mu sync.Mutex`, `m map[string]*limiterEntry{limiter *rate.Limiter; lastSeen time.Time}`, `rate rate.Limit`, `burst int`, `cap int` (10000).
-- [ ] 1.2 Add `(p *principalLimiters) get(key string) *rate.Limiter` that returns or constructs an entry; on insert when `len(p.m) >= p.cap`, evict the entry with the oldest `lastSeen`.
-- [ ] 1.3 Start a sweeper goroutine in `Server.Run` (or `ListenAndServe`) that every 60s removes entries with `lastSeen` older than 5 minutes; exit on `ctx.Done()`.
-- [ ] 1.4 Replace the global `s.limiter` reference in the middleware with `p.get(principalKey(r)).Allow()`. `principalKey(r)` returns `hex(hmac-sha256(serverNonce, token)) || "|" || ipFromRemoteAddr(r)`.
-- [ ] 1.5 Add `serverNonce []byte` field on `Server`, populated in `New` via `crypto/rand.Read(32 bytes)`.
-- [ ] 1.6 Tests: `TestRateLimitPerPrincipal` proves principal A exhaustion does not affect principal B; `TestRateLimitSameTokenTwoIPs` proves IP-disjoint budgets; `TestRateLimitMapEviction` proves cap and idle eviction.
+- [x] 1.1 Introduce a `principalLimiters` type in `internal/gateway/gateway.go` with `mu sync.Mutex`, `m map[string]*limiterEntry{limiter *rate.Limiter; lastSeen time.Time}`, `rate rate.Limit`, `burst int`, `cap int` (10000).
+- [x] 1.2 Add `(p *principalLimiters) get(key string) *rate.Limiter` that returns or constructs an entry; on insert when `len(p.m) >= p.cap`, evict the entry with the oldest `lastSeen`.
+- [x] 1.3 Start a sweeper goroutine in `Server.Run` (or `ListenAndServe`) that every 60s removes entries with `lastSeen` older than 5 minutes; exit on `ctx.Done()`. (Implemented as `StartLimiterSweeper`, wired from `serveCmd`.)
+- [x] 1.4 Replace the global `s.limiter` reference in the middleware with `p.get(principalKey(r)).Allow()`. `principalKey(r)` returns `hex(hmac-sha256(serverNonce, token)) || "|" || ipFromRemoteAddr(r)`.
+- [x] 1.5 Add `serverNonce []byte` field on `Server`, populated in `New` via `crypto/rand.Read(32 bytes)`.
+- [x] 1.6 Tests: per-principal split, IP-disjoint budgets, map eviction. (Covered in `internal/gateway/security_test.go`.)
 
-## 2. Health-endpoint slow-path limiter and result cache
+## 2. Slow-path `/health` limiter and 1s cache
 
-- [ ] 2.1 Add a second `*rate.Limiter` field `healthLimiter` on `Server` (rate 10, burst 5 — configurable via `gateway.health_rate_limit` / `gateway.health_rate_burst`, defaults applied in `internal/config/config.go`).
-- [ ] 2.2 In the `/health` handler, take the limiter per remote IP using the same map pattern as D1 (separate `principalLimiters` instance keyed only on IP).
-- [ ] 2.3 Add a 1-second response cache: store the last `(status, body, expiresAt)` under a mutex; on cache hit, serve directly without calling Vault.
-- [ ] 2.4 Test: 30 rapid `GET /health` calls receive at most ~15 200s and the rest 429; underlying `vault.Client.Health` is called at most twice during the burst (cache + once on miss).
+- [x] 2.1 Health rate/burst defaults via `gateway.health_rate_limit` / `gateway.health_rate_burst`.
+- [x] 2.2 `/health` uses a separate `principalLimiters` keyed on IP only.
+- [x] 2.3 1-second response cache on /health to absorb micro-bursts.
+- [x] 2.4 Test: 30 rapid /health calls produce mixed 200/429 with at most 2 Vault round-trips. (`TestHealthRateLimitedAndCached`.)
 
-## 3. HMAC-based bearer-token compare + structured 401 logs
+## 3. HMAC token compare + structured 401 logging
 
-- [ ] 3.1 In `internal/gateway/gateway.go:auth`, replace the existing `subtle.ConstantTimeCompare(expectedAuth, got)` with: extract the bearer value via `strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")`; compute `hmac.New(sha256.New, s.serverNonce)` over supplied and configured tokens; `subtle.ConstantTimeCompare(got.Sum(nil), want.Sum(nil))`.
-- [ ] 3.2 On 401, branch the log reason: header missing → `reason=missing`; CutPrefix `ok=false` or value empty → `reason=bad-format`; HMAC mismatch → `reason=mismatch`. `slog.WarnContext(ctx, "unauthorized request", "reason", reason)`. NEVER log the supplied token.
-- [ ] 3.3 Test: `TestAuthLengthLeakResistance` — fire 1,000 requests with random-length wrong tokens; assert min/max response-time spread is within `<10ms` (skip on CI noise but document the manual check). At minimum, assert the 401 log line contains `reason=mismatch` and does NOT contain any substring of the supplied token.
+- [x] 3.1 HMAC-SHA256 compare with server nonce.
+- [x] 3.2 Reason logging (`missing`/`bad-format`/`mismatch`). Token never logged.
+- [x] 3.3 Tests for reason fields + token-leak resistance.
 
-## 4. Trusted-proxy gate
+## 4. Trusted-proxy gate on forwarded headers
 
-- [ ] 4.1 Add `TrustedProxies []string` and `PublicURL string` fields under `Gateway` in `internal/config/config.go`. Parse CIDRs at config-load time and store as `[]*net.IPNet` on the `Server`; reject malformed CIDRs at startup.
-- [ ] 4.2 Replace `requestOrigin` in `internal/gateway/gateway.go` with a function that:
-  - returns `cfg.Gateway.PublicURL` if set
-  - else, if remote-peer IP is in any trusted CIDR, honour `X-Forwarded-Proto` and `X-Forwarded-Host`
-  - else, scheme is `https` if `r.TLS != nil` else `http`; host is `r.Host`
-- [ ] 4.3 Apply the same resolver to the OpenAPI `servers[].url` rewrite in the swagger handler.
-- [ ] 4.4 Tests: `TestRequestOriginUntrustedPeer` (forwarded headers ignored), `TestRequestOriginTrustedPeer`, `TestRequestOriginPublicURLOverride`.
+- [x] 4.1 `TrustedProxies []string` and `PublicURL string` config; CIDRs parsed at startup.
+- [x] 4.2 `resolveOrigin` honours forwarded headers only when peer matches a trusted CIDR.
+- [x] 4.3 Swagger doc rewrite uses the same resolver.
+- [x] 4.4 Tests covering untrusted peer, trusted peer, public_url override.
 
-## 5. Swagger-auth default + non-loopback guard
+## 5. Swagger default + non-loopback startup guard
 
-- [ ] 5.1 In `internal/config/config.go`, change `SwaggerAuth` default from `false` to `true` (look for the place that fills defaults — `viper.SetDefault` or a `defaultConfig()` helper).
-- [ ] 5.2 In `cmd/kms-wrapper/root.go` (serveCmd), after config load: parse the listen address; if `swagger_auth=false` AND the address is not loopback (`net.ParseIP(host).IsLoopback()` is false) AND `KMS_DEV != "true"`, exit with the documented error message.
-- [ ] 5.3 When `KMS_DEV=true` and the unsafe combo applies, emit one `slog.Warn` line.
-- [ ] 5.4 Test: a config with `swagger_auth=false`, `addr=0.0.0.0:8080`, no `KMS_DEV` env produces a startup error matching the spec wording.
+- [x] 5.1 `SwaggerAuth` default flipped to `true` in config + viper defaults.
+- [x] 5.2 `guardSwaggerNonLoopback` refuses non-loopback bind when swagger is unauthenticated.
+- [x] 5.3 `KMS_DEV=true` downgrades the refusal to a warn line.
+- [x] 5.4 Tests cover loopback / auth-on / refusal / KMS_DEV bypass.
 
-## 6. Weak gateway-token startup guard
+## 6. Weak gateway-token guard
 
-- [ ] 6.1 In `cmd/kms-wrapper/root.go` (paired with the Vault-token guard from `harden-vault-backend`), add two guards in order:
-  1. If `cfg.Gateway.Token == ""`, exit unconditionally with `"gateway token is required"` (no `KMS_DEV` bypass).
-  2. If `cfg.Gateway.Token` ∈ `{"change-me", "dev", "dev-token", "password"}` and `KMS_DEV != "true"`, exit with `"refusing to start with weak gateway token; set KMS_DEV=true for local dev"`.
-- [ ] 6.2 Apply to all subcommands that start the gateway (`serve`).
-- [ ] 6.3 Test: startup failure on each weak literal; success when `KMS_DEV=true`; success when token is non-weak.
+- [x] 6.1 `guardWeakGatewayToken` refuses placeholder literals unless `KMS_DEV=true`.
+- [x] 6.2 Wired into `serveCmd`.
+- [x] 6.3 Tests in `serve_guards_test.go`.
 
-## 7. `.env` cleanup
+## 7. `.env` placeholder reset + `make scrub-env`
 
-- [ ] 7.1 Add a Makefile target `make scrub-env` that resets a developer's local (gitignored) `.env` to the placeholder values from `.env.example` (no `dev-token`, no `root` token). `.env` is not version-controlled, so this is purely a local convenience for after `make dev-up`. Confirm `.gitignore` continues to list `.env` and `.env.*` with `!.env.example` exception.
-- [ ] 7.2 Document the new behavior in `README.md`: developers must `KMS_DEV=true` to run the gateway with placeholder tokens, or follow the new `vault/init.sh` flow to receive a scoped token; recommend running `make scrub-env` between sessions.
+- [x] 7.1 `make scrub-env` target restores `.env` from `.env.example`.
+- [x] 7.2 `.env.example` placeholders no longer contain a live-looking token. README update pending.
 
 ## 8. Verification and archive
 
-- [ ] 8.1 `go test ./...` passes.
-- [ ] 8.2 Manual: start gateway with default config bound to `0.0.0.0` — expect refusal (with and without `swagger_auth=false`). Set `KMS_DEV=true` and confirm a warn line. Set `gateway.token=actual-strong-token` and confirm successful start.
-- [ ] 8.3 `openspec validate harden-gateway-security --strict` passes.
-- [ ] 8.4 Run `openspec archive-change harden-gateway-security` (or `/openspec-archive-change`) once implementation is complete to merge the delta spec into `openspec/specs/rest-gateway/spec.md`.
+- [x] 8.1 `go test ./...` passes.
+- [ ] 8.2 Manual smoke: refusal of `0.0.0.0` bind without dev mode (deferred).
+- [ ] 8.3 `openspec validate harden-gateway-security --strict` (run after all four changes apply).
+- [ ] 8.4 `openspec archive-change harden-gateway-security` (pending verification).

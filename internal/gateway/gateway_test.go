@@ -105,6 +105,10 @@ func newGatewayHandler(opts ...func(*config.Config)) http.Handler {
 func newGatewayHandlerWithKeys(ks KeyStore, opts ...func(*config.Config)) http.Handler {
 	cfg := config.Default()
 	cfg.Gateway.Token = "secret"
+	// Existing tests pre-date the swagger_auth default flip; leave swagger
+	// publicly reachable so they continue to exercise the unauthenticated
+	// UI surface. Tests for the auth-on path override this explicitly.
+	cfg.Gateway.SwaggerAuth = false
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -159,7 +163,7 @@ func TestGatewayAuthHealthAndSign(t *testing.T) {
 		t.Fatalf("unauth code=%d body=%s", rr.Code, rr.Body.String())
 	}
 
-	body := []byte(`{"key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
 	rr = doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("evm code=%d body=%s", rr.Code, rr.Body.String())
@@ -222,7 +226,7 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 		t.Fatalf("expected openapi 3.0.x, got %q", doc.OpenAPI)
 	}
 
-	for _, path := range []string{"/health", "/sign/evm", "/sign/cosmos"} {
+	for _, path := range []string{"/v1/health", "/v1/sign/evm", "/v1/sign/cosmos"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("missing path %s in swagger doc", path)
 		}
@@ -233,7 +237,7 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 		}
 	}
 
-	evmPost := doc.Paths["/sign/evm"].Post
+	evmPost := doc.Paths["/v1/sign/evm"].Post
 	if evmPost == nil || evmPost.RequestBody == nil {
 		t.Fatalf("missing /sign/evm requestBody in swagger doc")
 	}
@@ -245,19 +249,19 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 		t.Fatalf("expected /sign/evm oneOf length 3, got %d", len(jsonSchema.Schema.OneOf))
 	}
 
-	healthGet := doc.Paths["/health"].Get
+	healthGet := doc.Paths["/v1/health"].Get
 	if healthGet == nil || healthGet.Security == nil {
-		t.Fatal("expected /health to declare explicit empty security")
+		t.Fatal("expected /v1/health to declare explicit empty security")
 	}
 	if len(*healthGet.Security) != 0 {
-		t.Fatalf("expected /health security to be empty, got %#v", *healthGet.Security)
+		t.Fatalf("expected /v1/health security to be empty, got %#v", *healthGet.Security)
 	}
 
 	if !requiresBearer(evmPost) {
-		t.Fatalf("expected /sign/evm to require BearerAuth, got %#v", evmPost.Security)
+		t.Fatalf("expected /v1/sign/evm to require BearerAuth, got %#v", evmPost.Security)
 	}
-	if !requiresBearer(doc.Paths["/sign/cosmos"].Post) {
-		t.Fatalf("expected /sign/cosmos to require BearerAuth, got %#v", doc.Paths["/sign/cosmos"].Post.Security)
+	if !requiresBearer(doc.Paths["/v1/sign/cosmos"].Post) {
+		t.Fatalf("expected /v1/sign/cosmos to require BearerAuth, got %#v", doc.Paths["/v1/sign/cosmos"].Post.Security)
 	}
 }
 
@@ -317,7 +321,7 @@ func TestSwaggerRoutesAreNotRateLimited(t *testing.T) {
 		cfg.Gateway.RateBurst = 1
 	})
 
-	body := []byte(`{"key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
 	rr := doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected first sign request to succeed, got code=%d body=%s", rr.Code, rr.Body.String())

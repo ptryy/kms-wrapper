@@ -19,6 +19,7 @@ import (
 	"io"
 	"log/slog"
 	"math/big"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -67,7 +68,67 @@ func (s *cliState) load(warnOut io.Writer) error {
 		cfg.LogLevel = s.logLevel
 	}
 	s.cfg = cfg
-	return cfg.ValidateRuntime()
+	if err := cfg.ValidateRuntime(); err != nil {
+		return err
+	}
+	return guardWeakVaultToken(cfg.Vault.Token, warnOut)
+}
+
+// weakVaultTokens is the set of placeholder values the gateway must refuse to
+// start with outside dev mode. "root" is included because the local dev Vault
+// container issues the bare root token by default — fine for `KMS_DEV=true`
+// loops, not fine for production.
+var weakVaultTokens = map[string]struct{}{
+	"":          {},
+	"root":      {},
+	"dev":       {},
+	"dev-token": {},
+	"change-me": {},
+}
+
+// weakGatewayTokens are the placeholder values shipped in .env.example or
+// commonly chosen by mistake. Empty token is rejected unconditionally via
+// ValidateRuntime; this set is for additional well-known weak literals.
+var weakGatewayTokens = map[string]struct{}{
+	"":          {},
+	"change-me": {},
+	"dev":       {},
+	"dev-token": {},
+	"password":  {},
+}
+
+func guardWeakVaultToken(token string, warnOut io.Writer) error {
+	if _, weak := weakVaultTokens[token]; !weak {
+		return nil
+	}
+	if token == "" {
+		// ValidateRuntime already covers this with the canonical message; the
+		// extra weak-token guard does not need to fire.
+		return nil
+	}
+	if os.Getenv("KMS_DEV") != "true" {
+		return errors.New("refusing to start with weak vault token; set KMS_DEV=true for local dev")
+	}
+	if warnOut != nil {
+		fmt.Fprintln(warnOut, "warn: running with weak vault token (KMS_DEV=true)")
+	}
+	return nil
+}
+
+func guardWeakGatewayToken(token string, warnOut io.Writer) error {
+	if _, weak := weakGatewayTokens[token]; !weak {
+		return nil
+	}
+	if token == "" {
+		return nil // ValidateRuntime already enforces non-empty
+	}
+	if os.Getenv("KMS_DEV") != "true" {
+		return errors.New("refusing to start with weak gateway token; set KMS_DEV=true for local dev")
+	}
+	if warnOut != nil {
+		fmt.Fprintln(warnOut, "warn: running with weak gateway token (KMS_DEV=true)")
+	}
+	return nil
 }
 
 func (s *cliState) client(warnOut io.Writer) (*vault.Client, error) {
@@ -86,12 +147,75 @@ func serveCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := guardWeakGatewayToken(st.cfg.Gateway.Token, cmd.ErrOrStderr()); err != nil {
+				return err
+			}
+			if err := guardSwaggerNonLoopback(st.cfg, cmd.ErrOrStderr()); err != nil {
+				return err
+			}
 			initLogger(st.cfg.LogLevel, cmd.ErrOrStderr())
+			c.SetRenewalFailureHook(gateway.IncrementTokenRenewalFailure)
+			c.SetVaultCallObserver(gateway.ObserveVaultCall)
 			c.StartRenewal(context.Background())
 			slog.Info("starting gateway", "addr", st.cfg.Gateway.Addr)
-			return gateway.New(st.cfg, c, c, evmsigner.New(c), cosmossigner.New(c)).ListenAndServe()
+			s, err := gateway.NewOrFail(st.cfg, c, c, evmsigner.New(c), cosmossigner.New(c))
+			if err != nil {
+				return fmt.Errorf("init gateway: %w", err)
+			}
+			s.StartLimiterSweeper(context.Background())
+			if st.cfg.Gateway.SwaggerEnabled {
+				slog.Info("swagger UI", "url", swaggerUIURL(st.cfg))
+			}
+			return s.ListenAndServe()
 		},
 	}
+}
+
+// swaggerUIURL derives the externally-reachable Swagger UI URL using the
+// same trusted-proxy/public-url precedence the resolver uses for OpenAPI
+// servers[]: public_url wins, else loopback http://addr. Operators have
+// asked for this so they can pull the link from the startup line directly.
+func swaggerUIURL(cfg config.Config) string {
+	raw := strings.TrimSpace(cfg.Gateway.PublicURL)
+	if raw != "" {
+		return strings.TrimRight(raw, "/") + "/swagger/index.html"
+	}
+	addr := cfg.Gateway.Addr
+	if addr == "" {
+		addr = "127.0.0.1:8080"
+	}
+	return "http://" + addr + "/swagger/index.html"
+}
+
+// guardSwaggerNonLoopback refuses to start when swagger is unauthenticated
+// and the listen address is not a loopback IP — a public listener pointing
+// at the unauthenticated swagger surface is the spec's worst-case dev/prod
+// confusion. KMS_DEV=true downgrades the refusal to a warn line so the
+// docker-compose loop keeps working.
+func guardSwaggerNonLoopback(cfg config.Config, warnOut io.Writer) error {
+	if cfg.Gateway.SwaggerAuth {
+		return nil
+	}
+	host, _, err := net.SplitHostPort(cfg.Gateway.Addr)
+	if err != nil {
+		// Unparseable addr — bail with a generic message rather than
+		// pretending the address is loopback.
+		return fmt.Errorf("parse gateway addr %q: %w", cfg.Gateway.Addr, err)
+	}
+	ip := net.ParseIP(host)
+	if ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if os.Getenv("KMS_DEV") != "true" {
+		return errors.New("refusing to expose unauthenticated swagger on non-loopback address; set KMS_DEV=true for local dev")
+	}
+	if warnOut != nil {
+		fmt.Fprintln(warnOut, "warn: running with unauthenticated swagger on non-loopback (KMS_DEV=true)")
+	}
+	return nil
 }
 
 func keysCmd(st *cliState) *cobra.Command {
@@ -220,11 +344,18 @@ func signCosmosCmd(st *cliState) *cobra.Command {
 			}
 			signer := cosmossigner.New(c)
 			var sig, pub []byte
+			// Important: keep `err` in the outer scope. Previously the DIRECT
+			// case shadowed `err` via the base64 decode local, and the
+			// subsequent `sig, pub, err = signer.SignDirect(...)` wrote to
+			// the inner copy — the post-switch nil check ignored signer
+			// failures and the CLI printed an empty success. The decode error
+			// gets its own local (decErr) so the outer `err` belongs to the
+			// signer call alone.
 			switch mode {
 			case "DIRECT":
-				doc, err := base64.StdEncoding.DecodeString(signDoc)
-				if err != nil {
-					return err
+				doc, decErr := base64.StdEncoding.DecodeString(signDoc)
+				if decErr != nil {
+					return fmt.Errorf("decode sign-doc: %w", decErr)
 				}
 				sig, pub, err = signer.SignDirect(cmd.Context(), path, doc)
 			case "AMINO_JSON":
@@ -233,13 +364,13 @@ func signCosmosCmd(st *cliState) *cobra.Command {
 				return errors.New("unsupported sign_mode")
 			}
 			if err != nil {
-				return err
+				return fmt.Errorf("sign cosmos: %w", err)
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "signature: %s\npub_key: %s\n",
 				base64.StdEncoding.EncodeToString(sig),
 				base64.StdEncoding.EncodeToString(pub),
 			)
-			if addr, err := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp); err == nil {
+			if addr, derr := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp); derr == nil {
 				fmt.Fprintf(cmd.OutOrStdout(), "cosmos_address: %s\n", addr)
 			}
 			return nil

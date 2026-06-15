@@ -2,16 +2,19 @@ package gateway
 
 import (
 	"context"
-	"crypto/subtle"
+	cryptorand "crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -68,8 +71,15 @@ type methodNotAllowedRewriter struct {
 func (w *methodNotAllowedRewriter) WriteHeader(status int) {
 	if status == http.StatusMethodNotAllowed {
 		h := w.ResponseWriter.Header()
+		// Preserve the `Allow` header set by http.ServeMux. Per RFC 7231
+		// §6.5.5 a 405 response MUST include `Allow`; the rewriter only
+		// replaces the body, never the headers that classify the failure.
+		allow := h.Get("Allow")
 		h.Set("Content-Type", "application/json")
 		h.Del("Content-Length")
+		if allow != "" {
+			h.Set("Allow", allow)
+		}
 		w.ResponseWriter.WriteHeader(status)
 		_, _ = w.ResponseWriter.Write([]byte("{\"error\":\"method not allowed\"}\n"))
 		w.swallowBody = true
@@ -92,17 +102,35 @@ func json405Handler(next http.Handler) http.Handler {
 }
 
 type Server struct {
-	cfg          config.Config
-	vault        HealthChecker
-	keys         KeyStore
-	evm          EVMSigner
-	cosmos       CosmosSigner
-	server       *http.Server
-	limiter      *rate.Limiter
-	expectedAuth string
+	cfg            config.Config
+	vault          HealthChecker
+	keys           KeyStore
+	evm            EVMSigner
+	cosmos         CosmosSigner
+	server         *http.Server
+	principals     *principalLimiters
+	healthLimiters *principalLimiters
+	healthResp     healthCache
+	serverNonce    []byte
+	trustedProxies []*net.IPNet
 }
 
+// New constructs a Server. Errors here surface configuration mistakes (bad
+// CIDRs, RNG failure) up to the caller so startup fails fast rather than
+// silently disabling a security gate.
 func New(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner EVMSigner, cosmosSigner CosmosSigner) *Server {
+	s, err := NewOrFail(cfg, vault, keys, evmSigner, cosmosSigner)
+	if err != nil {
+		panic(err)
+	}
+	return s
+}
+
+// NewOrFail is the error-returning constructor used by production callers
+// that want to surface configuration errors (bad trusted-proxy CIDRs, RNG
+// failure) instead of panicking. New() wraps this for tests and existing
+// callsites that already assume the constructor cannot fail.
+func NewOrFail(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner EVMSigner, cosmosSigner CosmosSigner) (*Server, error) {
 	if cfg.Gateway.Addr == "" {
 		cfg.Gateway.Addr = "127.0.0.1:8080"
 	}
@@ -114,14 +142,32 @@ func New(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner EVMSig
 	if burst <= 0 {
 		burst = 20
 	}
+	healthRate := cfg.Gateway.HealthRateLimit
+	if healthRate <= 0 {
+		healthRate = 10
+	}
+	healthBurst := cfg.Gateway.HealthRateBurst
+	if healthBurst <= 0 {
+		healthBurst = 5
+	}
+	nonce := make([]byte, 32)
+	if _, err := cryptorand.Read(nonce); err != nil {
+		return nil, err
+	}
+	trusted, err := parseTrustedProxies(cfg.Gateway.TrustedProxies)
+	if err != nil {
+		return nil, err
+	}
 	s := &Server{
-		cfg:          cfg,
-		vault:        vault,
-		keys:         keys,
-		evm:          evmSigner,
-		cosmos:       cosmosSigner,
-		limiter:      rate.NewLimiter(rate.Limit(rl), burst),
-		expectedAuth: "Bearer " + cfg.Gateway.Token,
+		cfg:            cfg,
+		vault:          vault,
+		keys:           keys,
+		evm:            evmSigner,
+		cosmos:         cosmosSigner,
+		principals:     newPrincipalLimiters(rate.Limit(rl), burst, 10000),
+		healthLimiters: newPrincipalLimiters(rate.Limit(healthRate), healthBurst, 10000),
+		serverNonce:    nonce,
+		trustedProxies: trusted,
 	}
 	s.server = &http.Server{
 		Addr:              cfg.Gateway.Addr,
@@ -131,7 +177,26 @@ func New(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner EVMSig
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
-	return s
+	return s, nil
+}
+
+// StartLimiterSweeper launches a background goroutine that removes idle
+// limiter entries every minute. It exits on ctx.Done().
+func (s *Server) StartLimiterSweeper(ctx context.Context) {
+	go func() {
+		t := time.NewTicker(60 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				cutoff := time.Now().Add(-5 * time.Minute)
+				s.principals.sweep(cutoff)
+				s.healthLimiters.sweep(cutoff)
+			}
+		}
+	}()
 }
 
 func (s *Server) ListenAndServe() error {
@@ -162,14 +227,55 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) Handler() http.Handler { return s.routes() }
 
+// routesList enumerates the canonical (un-prefixed) routes. Each entry is
+// registered twice: once at its bare path with a Deprecation/Sunset wrapper
+// (for backwards-compat) and once at the `/v1` prefix that the OpenAPI spec
+// advertises as primary. The bare paths are scheduled to be removed in the
+// next minor-version cycle per RFC 8594.
+type routeEntry struct {
+	method  string
+	pattern string
+	handler http.Handler
+}
+
+func (s *Server) appRoutes() []routeEntry {
+	return []routeEntry{
+		{http.MethodGet, "/health", s.healthRateLimit(http.HandlerFunc(s.health))},
+		{http.MethodPost, "/sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM)))},
+		{http.MethodPost, "/sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos)))},
+		{http.MethodPost, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.createKey)))},
+		{http.MethodGet, "/keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey)))},
+		{http.MethodGet, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys)))},
+	}
+}
+
+// sunsetDate is the RFC 8594 Sunset header value advertised on the bare
+// route family. Set once per process start, at least 90 days in the future.
+var sunsetDate = time.Now().AddDate(0, 0, 120).UTC().Format(http.TimeFormat)
+
+// withDeprecation tags responses with the bare-path Deprecation + Sunset
+// headers. Mounted only on the bare-form copy of each route; the `/v1/`
+// variant returns unadorned responses.
+func withDeprecation(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Deprecation", "true")
+		w.Header().Set("Sunset", sunsetDate)
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", s.health)
-	mux.Handle("POST /sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM))))
-	mux.Handle("POST /sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos))))
-	mux.Handle("POST /keys", s.rateLimit(s.auth(http.HandlerFunc(s.createKey))))
-	mux.Handle("GET /keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey))))
-	mux.Handle("GET /keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys))))
+	for _, e := range s.appRoutes() {
+		mux.Handle(e.method+" "+e.pattern, withDeprecation(e.handler))
+		mux.Handle(e.method+" /v1"+e.pattern, e.handler)
+	}
+	// Probe + observability endpoints. Unauthenticated and IP-rate-limited
+	// via the slow-path limiter. Mounted at bare paths (not /v1/) per
+	// convention; `/health` keeps backward-compat with Deprecation+Sunset.
+	mux.Handle("GET /livez", s.healthRateLimit(http.HandlerFunc(s.handleLivez)))
+	mux.Handle("GET /readyz", s.healthRateLimit(http.HandlerFunc(s.handleReadyz)))
+	mux.Handle("GET /metrics", s.healthRateLimit(metricsHandler()))
 	if s.cfg.Gateway.SwaggerEnabled {
 		swaggerUI := httpSwagger.Handler(httpSwagger.URL("/swagger/doc.json"))
 		// Rewrite "/swagger/" → "/swagger/index.html" so http-swagger serves the
@@ -193,7 +299,44 @@ func (s *Server) routes() http.Handler {
 		mux.Handle("GET /swagger/doc.json", swaggerDoc)
 		mux.Handle("GET /swagger/", swaggerRoot)
 	}
-	return s.requestLogger(json405Handler(mux))
+	// Middleware order: requestID → recoverPanic → requestLogger → 405-rewriter → mux.
+	// requestID must be outermost so the recovered request still has the ID
+	// in its context; recoverPanic sits immediately inside so it captures
+	// the request ID for the 500 envelope and the panic log line.
+	return requestID(recoverPanic(s.requestLogger(s.instrumentRoutes(json405Handler(mux)))))
+}
+
+// instrumentRoutes emits kms_http_requests_total + duration histograms.
+// `path` uses the matched route pattern when possible (kept bounded), but
+// since http.ServeMux does not expose the matched pattern post-dispatch we
+// take r.URL.Path as a best-effort approximation. Cardinality is bounded
+// by the finite route set.
+func (s *Server) instrumentRoutes(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		sw := &statusResponseWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sw, r)
+		path := r.URL.Path
+		method := r.Method
+		status := http.StatusText(sw.status)
+		if status == "" {
+			status = "unknown"
+		}
+		kmsHTTPRequestsTotal.WithLabelValues(path, method, intToStatusLabel(sw.status)).Inc()
+		kmsHTTPRequestDuration.WithLabelValues(path, method).Observe(time.Since(start).Seconds())
+	})
+}
+
+func intToStatusLabel(s int) string {
+	// 200 → "200", 404 → "404". Small allocation but bounded by status set.
+	switch {
+	case s >= 200 && s < 300:
+		return fmt.Sprintf("%d", s)
+	case s == 0:
+		return "0"
+	default:
+		return fmt.Sprintf("%d", s)
+	}
 }
 
 func (s *Server) serveSwaggerDoc(w http.ResponseWriter, r *http.Request) {
@@ -203,7 +346,7 @@ func (s *Server) serveSwaggerDoc(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "swagger doc unavailable")
 		return
 	}
-	normalized, err := normalizeSwaggerDocServers(doc, requestOrigin(r))
+	normalized, err := normalizeSwaggerDocServers(doc, s.resolveOrigin(r))
 	if err != nil {
 		slog.ErrorContext(r.Context(), "normalize swagger doc failed", "error", err)
 		writeError(w, http.StatusInternalServerError, "swagger doc unavailable")
@@ -226,28 +369,6 @@ func normalizeSwaggerDocServers(doc, origin string) ([]byte, error) {
 	return json.Marshal(spec)
 }
 
-func requestOrigin(r *http.Request) string {
-	host := strings.TrimSpace(r.Host)
-	if host == "" {
-		return ""
-	}
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
-	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
-		if idx := strings.Index(forwarded, ","); idx >= 0 {
-			forwarded = forwarded[:idx]
-		}
-		switch strings.ToLower(strings.TrimSpace(forwarded)) {
-		case "http", "https":
-			scheme = strings.ToLower(strings.TrimSpace(forwarded))
-		default:
-			slog.DebugContext(r.Context(), "ignoring unrecognised X-Forwarded-Proto", "value", forwarded)
-		}
-	}
-	return scheme + "://" + host
-}
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -264,9 +385,13 @@ func (s *Server) requestLogger(next http.Handler) http.Handler {
 	})
 }
 
+// rateLimit applies the per-principal limiter to authenticated routes.
+// The principal key is HMAC(serverNonce, bearer)||ip — see authHMAC.
 func (s *Server) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.limiter.Allow() {
+		key := s.principalKey(r)
+		if !s.principals.get(key).Allow() {
+			s.onRateLimitRejected(r)
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
@@ -274,33 +399,92 @@ func (s *Server) rateLimit(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) auth(next http.Handler) http.Handler {
+// healthRateLimit is the slow-path limiter for unauthenticated probe/scrape
+// endpoints (/health, /metrics). It keys on remote IP only — no bearer in
+// scope. The rate/burst defaults are conservative enough for K8s probes.
+func (s *Server) healthRateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		got := r.Header.Get("Authorization")
-		if subtle.ConstantTimeCompare([]byte(got), []byte(s.expectedAuth)) != 1 {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
+		key := "ip|" + ipFromRemoteAddr(r.RemoteAddr)
+		if !s.healthLimiters.get(key).Allow() {
+			s.onRateLimitRejected(r)
+			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
+// onRateLimitRejected emits a single info-level log line (info, not warn —
+// rate-limit rejection is expected behaviour under load) and increments the
+// kms_rate_limit_rejections_total counter. `path` is r.URL.Path; the route
+// set is finite so cardinality stays bounded.
+func (s *Server) onRateLimitRejected(r *http.Request) {
+	slog.InfoContext(r.Context(), "rate limit exceeded",
+		"path", r.URL.Path,
+		"reason", "rate_limited",
+	)
+	kmsRateLimitRejectionsTotal.WithLabelValues(r.URL.Path).Inc()
+}
+
 // health godoc
-// @Summary Gateway health status
+// @Summary Gateway health status (alias of /readyz; deprecated)
 // @Tags health
 // @Produce json
 // @Success 200 {object} map[string]string
 // @Failure 503 {object} map[string]string
 // @Security
-// @Router /health [get]
-func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	if s.vault != nil && s.vault.Health() == nil {
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "vault": "reachable"})
+// @Router /v1/health [get]
+//
+// health is the deprecated alias of /readyz that returns the same body shape
+// but is cached for 1 second to absorb micro-bursts (legacy K8s probe
+// pattern). Mounted at the bare `/health` path via the dual-mount loop, so
+// the `withDeprecation` middleware adds the Deprecation and Sunset headers.
+func (s *Server) health(w http.ResponseWriter, r *http.Request) {
+	now := time.Now()
+	if status, body, ok := s.healthResp.get(now); ok {
+		w.Header().Set("Content-Type", "application/json")
+		if status != http.StatusOK {
+			w.WriteHeader(status)
+		}
+		_, _ = w.Write(body)
 		return
 	}
-	w.WriteHeader(http.StatusServiceUnavailable)
-	_ = json.NewEncoder(w).Encode(map[string]string{"status": "degraded", "vault": "unreachable"})
+	status, payload := s.computeReadiness()
+	body, _ := json.Marshal(payload)
+	body = append(body, '\n')
+	s.healthResp.set(status, body, time.Second, now)
+	w.Header().Set("Content-Type", "application/json")
+	if status != http.StatusOK {
+		w.WriteHeader(status)
+	}
+	_, _ = w.Write(body)
+}
+
+// computeReadiness returns the canonical (/readyz) status code + payload
+// pair, shared by /readyz and the cached /health alias. Kept on Server so
+// future Vault-state introspection can be added in one place.
+func (s *Server) computeReadiness() (int, map[string]string) {
+	if s.vault != nil {
+		if err := s.vault.Health(); err != nil {
+			return http.StatusServiceUnavailable, map[string]string{
+				"status": "not_ready", "reason": "vault_unreachable",
+			}
+		}
+	}
+	if rc, ok := s.vault.(ReadinessChecker); ok {
+		last := rc.LastLookupSelf()
+		if last.IsZero() {
+			return http.StatusServiceUnavailable, map[string]string{
+				"status": "not_ready", "reason": "token_lookup_stale",
+			}
+		}
+		if time.Since(last) > readinessWindow {
+			return http.StatusServiceUnavailable, map[string]string{
+				"status": "not_ready", "reason": "token_invalid",
+			}
+		}
+	}
+	return http.StatusOK, map[string]string{"status": "ready"}
 }
 
 // signEVM godoc
@@ -317,7 +501,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 // @Failure 429 {object} apptypes.ErrorResponse
 // @Failure 500 {object} apptypes.ErrorResponse
 // @Security BearerAuth
-// @Router /sign/evm [post]
+// @Router /v1/sign/evm [post]
 func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req apptypes.EVMSignRequest
@@ -329,60 +513,81 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "key_path is required")
 		return
 	}
-	payloads := countNonEmpty(req.RawTx, req.PersonalMessage, req.EIP712Digest)
-	if payloads == 0 {
-		writeError(w, http.StatusBadRequest, "payload is required")
-		return
+	switch req.Type {
+	case "raw_tx":
+		s.signEVMRawTx(w, r, &req)
+	case "personal_message":
+		s.signEVMPersonal(w, r, &req)
+	case "eip712_digest":
+		s.signEVMEIP712(w, r, &req)
+	case "":
+		writeError(w, http.StatusBadRequest, "type is required and must be one of raw_tx|personal_message|eip712_digest")
+	default:
+		writeError(w, http.StatusBadRequest, "type must be one of raw_tx|personal_message|eip712_digest")
 	}
-	if payloads > 1 {
-		writeError(w, http.StatusBadRequest, "only one payload field is allowed")
-		return
-	}
+}
 
-	if req.RawTx != "" {
-		if req.ChainID <= 0 {
-			writeError(w, http.StatusBadRequest, "chain_id is required and must be positive")
-			return
-		}
-		raw, err := decodeHex(req.RawTx)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "raw_tx must be hex")
-			return
-		}
-		out, err := s.evm.SignRawTx(r.Context(), req.KeyPath, big.NewInt(req.ChainID), raw)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "EVM raw tx signing failed", "error", err, "key_path", req.KeyPath)
-			writeError(w, http.StatusInternalServerError, "signing failed")
-			return
-		}
-		var tx ethtypes.Transaction
-		_ = tx.UnmarshalBinary(out)
-		v, rpart, spart := tx.RawSignatureValues()
-		writeJSON(w, apptypes.SignResponse{
-			SignedTx: "0x" + hex.EncodeToString(out),
-			Parts:    &apptypes.SignatureParts{R: rpart.Text(16), S: spart.Text(16), V: v.Uint64()},
-		})
+func (s *Server) signEVMRawTx(w http.ResponseWriter, r *http.Request, req *apptypes.EVMSignRequest) {
+	defer func(start time.Time) { ObserveSigningDuration("evm", time.Since(start).Seconds()) }(time.Now())
+	if req.RawTx == "" {
+		writeError(w, http.StatusBadRequest, "raw_tx is required when type=raw_tx")
 		return
 	}
-
-	if req.PersonalMessage != "" {
-		msg, err := decodeHex(req.PersonalMessage)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "personal_message must be hex")
-			return
-		}
-		sig, err := s.evm.SignPersonalMessage(r.Context(), req.KeyPath, msg)
-		if err != nil {
-			slog.ErrorContext(r.Context(), "personal message signing failed", "error", err, "key_path", req.KeyPath)
-			writeError(w, http.StatusInternalServerError, "signing failed")
-			return
-		}
-		// eth_sign / personal_sign expects v=27/28
-		writeJSON(w, apptypes.SignResponse{Signature: "0x" + hex.EncodeToString(evm.NormalizeEthereumV(sig))})
+	if req.ChainID <= 0 {
+		writeError(w, http.StatusBadRequest, "chain_id is required and must be positive")
 		return
 	}
+	raw, err := decodeHex(req.RawTx)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "raw_tx must be hex")
+		return
+	}
+	out, err := s.evm.SignRawTx(r.Context(), req.KeyPath, big.NewInt(req.ChainID), raw)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "EVM raw tx signing failed", "error", err, "key_path", req.KeyPath)
+		writeError(w, http.StatusInternalServerError, "signing failed")
+		return
+	}
+	var tx ethtypes.Transaction
+	if err := tx.UnmarshalBinary(out); err != nil {
+		slog.ErrorContext(r.Context(), "decode signed tx failed", "error", err)
+		writeError(w, http.StatusInternalServerError, "decode signed tx: "+err.Error())
+		return
+	}
+	v, rpart, spart := tx.RawSignatureValues()
+	writeJSON(w, apptypes.SignResponse{
+		SignedTx: "0x" + hex.EncodeToString(out),
+		Parts:    &apptypes.SignatureParts{R: rpart.Text(16), S: spart.Text(16), V: v.Uint64()},
+	})
+}
 
-	// EIP-712: validate early, return raw v=0/1 (no +27 offset per spec)
+func (s *Server) signEVMPersonal(w http.ResponseWriter, r *http.Request, req *apptypes.EVMSignRequest) {
+	defer func(start time.Time) { ObserveSigningDuration("evm", time.Since(start).Seconds()) }(time.Now())
+	if req.PersonalMessage == "" {
+		writeError(w, http.StatusBadRequest, "personal_message is required when type=personal_message")
+		return
+	}
+	msg, err := decodeHex(req.PersonalMessage)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "personal_message must be hex")
+		return
+	}
+	sig, err := s.evm.SignPersonalMessage(r.Context(), req.KeyPath, msg)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "personal message signing failed", "error", err, "key_path", req.KeyPath)
+		writeError(w, http.StatusInternalServerError, "signing failed")
+		return
+	}
+	// eth_sign / personal_sign expects v=27/28
+	writeJSON(w, apptypes.EVMSignPersonalResponse{Signature: "0x" + hex.EncodeToString(evm.NormalizeEthereumV(sig))})
+}
+
+func (s *Server) signEVMEIP712(w http.ResponseWriter, r *http.Request, req *apptypes.EVMSignRequest) {
+	defer func(start time.Time) { ObserveSigningDuration("evm", time.Since(start).Seconds()) }(time.Now())
+	if req.EIP712Digest == "" {
+		writeError(w, http.StatusBadRequest, "eip712_digest is required when type=eip712_digest")
+		return
+	}
 	digest, err := decodeHex(req.EIP712Digest)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "eip712_digest must be hex")
@@ -398,7 +603,7 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "signing failed")
 		return
 	}
-	writeJSON(w, apptypes.SignResponse{Signature: "0x" + hex.EncodeToString(sig)})
+	writeJSON(w, apptypes.EVMSignPersonalResponse{Signature: "0x" + hex.EncodeToString(sig)})
 }
 
 // signCosmos godoc
@@ -413,8 +618,9 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 // @Failure 429 {object} apptypes.ErrorResponse
 // @Failure 500 {object} apptypes.ErrorResponse
 // @Security BearerAuth
-// @Router /sign/cosmos [post]
+// @Router /v1/sign/cosmos [post]
 func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
+	defer func(start time.Time) { ObserveSigningDuration("cosmos", time.Since(start).Seconds()) }(time.Now())
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req apptypes.CosmosSignRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -446,10 +652,19 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		slog.ErrorContext(r.Context(), "Cosmos signing failed", "error", err, "key_path", req.KeyPath, "sign_mode", req.SignMode)
+		if errors.Is(err, apptypes.ErrBadRequest) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "signing failed")
 		return
 	}
-	addr, _ := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp)
+	addr, derr := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp)
+	if derr != nil {
+		slog.ErrorContext(r.Context(), "cosmos address derivation failed", "error", derr)
+		writeError(w, http.StatusInternalServerError, "derive cosmos address: "+derr.Error())
+		return
+	}
 	writeJSON(w, apptypes.SignResponse{
 		Signature:     base64.StdEncoding.EncodeToString(sig),
 		PubKey:        base64.StdEncoding.EncodeToString(pub),
@@ -470,7 +685,7 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 // @Failure 429 {object} apptypes.ErrorResponse
 // @Failure 500 {object} apptypes.ErrorResponse
 // @Security BearerAuth
-// @Router /keys [post]
+// @Router /v1/keys [post]
 func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	var req apptypes.KeyCreateRequest
@@ -505,7 +720,11 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		s.writeVaultErr(w, r, err, req.Path, "deriveKeyInfo")
 		return
 	}
-	writeJSON(w, apptypes.KeyCreateResponse{KeyInfo: info, AlreadyExisted: alreadyExisted})
+	status := http.StatusOK
+	if !alreadyExisted {
+		status = http.StatusCreated
+	}
+	writeJSONStatus(w, status, apptypes.KeyCreateResponse{KeyInfo: info, AlreadyExisted: alreadyExisted})
 }
 
 // showKey godoc
@@ -521,7 +740,7 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 // @Failure 429 {object} apptypes.ErrorResponse
 // @Failure 500 {object} apptypes.ErrorResponse
 // @Security BearerAuth
-// @Router /keys/info [get]
+// @Router /v1/keys/info [get]
 func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Query().Get("path")
 	if path == "" {
@@ -551,9 +770,25 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 // @Failure 429 {object} apptypes.ErrorResponse
 // @Failure 500 {object} apptypes.ErrorResponse
 // @Security BearerAuth
-// @Router /keys [get]
+// @Router /v1/keys [get]
 func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 	prefix := r.URL.Query().Get("prefix")
+	limit, err := parseListLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	offset, cursorPrefix, err := parseListCursor(r.URL.Query().Get("cursor"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid cursor")
+		return
+	}
+	if cursorPrefix != "" && cursorPrefix != prefix {
+		// A cursor encodes the prefix it was issued against; clients passing
+		// a mismatched (prefix, cursor) pair almost certainly have a bug.
+		writeError(w, http.StatusBadRequest, "invalid cursor")
+		return
+	}
 	ks, err := s.keys.ListKeys(r.Context(), prefix)
 	if err != nil {
 		s.writeVaultErr(w, r, err, prefix, "ListKeys")
@@ -562,7 +797,75 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 	if ks == nil {
 		ks = []string{}
 	}
-	writeJSON(w, apptypes.KeyListResponse{Keys: ks, Count: len(ks)})
+	// Client-side pagination: fetch the full list, slice. Documented in
+	// design.md as a first-step implementation that can be swapped for
+	// plugin-native pagination later without changing the wire shape.
+	if offset > len(ks) {
+		offset = len(ks)
+	}
+	end := offset + limit
+	if end > len(ks) {
+		end = len(ks)
+	}
+	page := append([]string{}, ks[offset:end]...)
+	next := ""
+	if end < len(ks) {
+		next = encodeListCursor(prefix, end)
+	}
+	writeJSON(w, apptypes.KeyListResponse{Keys: page, Count: len(page), NextCursor: next})
+}
+
+const (
+	listLimitDefault = 100
+	listLimitMax     = 1000
+)
+
+// parseListLimit parses ?limit and clamps it to [1, listLimitMax]. Empty
+// string → listLimitDefault. Negative or non-numeric returns an error so
+// clients see "limit must be a positive integer".
+func parseListLimit(raw string) (int, error) {
+	if raw == "" {
+		return listLimitDefault, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, errors.New("limit must be a positive integer")
+	}
+	if n < 1 {
+		return listLimitDefault, nil
+	}
+	if n > listLimitMax {
+		return listLimitMax, nil
+	}
+	return n, nil
+}
+
+type listCursorPayload struct {
+	Prefix string `json:"p"`
+	Offset int    `json:"o"`
+}
+
+func encodeListCursor(prefix string, offset int) string {
+	b, _ := json.Marshal(listCursorPayload{Prefix: prefix, Offset: offset})
+	return base64.URLEncoding.EncodeToString(b)
+}
+
+func parseListCursor(raw string) (offset int, prefix string, err error) {
+	if raw == "" {
+		return 0, "", nil
+	}
+	decoded, derr := base64.URLEncoding.DecodeString(raw)
+	if derr != nil {
+		return 0, "", derr
+	}
+	var p listCursorPayload
+	if jerr := json.Unmarshal(decoded, &p); jerr != nil {
+		return 0, "", jerr
+	}
+	if p.Offset < 0 {
+		return 0, "", errors.New("negative cursor offset")
+	}
+	return p.Offset, p.Prefix, nil
 }
 
 func (s *Server) writeVaultErr(w http.ResponseWriter, r *http.Request, err error, keyPath, op string) {
@@ -572,6 +875,8 @@ func (s *Server) writeVaultErr(w http.ResponseWriter, r *http.Request, err error
 		writeError(w, http.StatusNotFound, "key not found: "+keyPath)
 	case errors.Is(err, apptypes.ErrPermission):
 		writeError(w, http.StatusForbidden, "permission denied")
+	case errors.Is(err, apptypes.ErrBadRequest):
+		writeError(w, http.StatusBadRequest, err.Error())
 	default:
 		writeError(w, http.StatusInternalServerError, "vault error")
 	}
@@ -579,6 +884,14 @@ func (s *Server) writeVaultErr(w http.ResponseWriter, r *http.Request, err error
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+// writeJSONStatus is like writeJSON but writes an explicit status code. Used
+// by handlers that need a non-200 success code (e.g. 201 Created).
+func writeJSONStatus(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
 
@@ -592,12 +905,3 @@ func decodeHex(s string) ([]byte, error) {
 	return hex.DecodeString(strings.TrimPrefix(s, "0x"))
 }
 
-func countNonEmpty(vals ...string) int {
-	n := 0
-	for _, v := range vals {
-		if v != "" {
-			n++
-		}
-	}
-	return n
-}

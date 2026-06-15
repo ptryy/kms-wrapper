@@ -55,7 +55,7 @@ func TestCreateKeyHappyPath(t *testing.T) {
 	}
 	h := newGatewayHandlerWithKeys(ks)
 	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
-	if rr.Code != http.StatusOK {
+	if rr.Code != http.StatusCreated {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	var resp apptypes.KeyCreateResponse
@@ -304,7 +304,7 @@ func TestListKeysEmptyResultIsNotNull(t *testing.T) {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	body := rr.Body.String()
-	if body != "{\"keys\":[],\"count\":0}\n" {
+	if body != "{\"keys\":[],\"count\":0,\"next_cursor\":\"\"}\n" {
 		t.Fatalf("expected empty array, got %s", body)
 	}
 }
@@ -358,7 +358,7 @@ func TestKeysShareRateLimitWithSign(t *testing.T) {
 		t.Fatalf("first /keys/info code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	// Subsequent /sign/* should be rate-limited (shared budget).
-	body := []byte(`{"key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
 	rr = doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected /sign/evm to be rate-limited via shared budget, got code=%d body=%s", rr.Code, rr.Body.String())
@@ -374,20 +374,20 @@ func TestSwaggerSpecAdvertisesKeys(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	doc := loadSwaggerDoc(t, h, false)
 
-	for _, p := range []string{"/keys", "/keys/info"} {
+	for _, p := range []string{"/v1/keys", "/v1/keys/info"} {
 		if _, ok := doc.Paths[p]; !ok {
 			t.Fatalf("missing path %s in swagger doc", p)
 		}
 	}
-	keysPath := doc.Paths["/keys"]
+	keysPath := doc.Paths["/v1/keys"]
 	if keysPath.Post == nil || keysPath.Get == nil {
-		t.Fatalf("/keys must expose both POST and GET, got %#v", keysPath)
+		t.Fatalf("/v1/keys must expose both POST and GET, got %#v", keysPath)
 	}
-	if doc.Paths["/keys/info"].Get == nil {
-		t.Fatalf("/keys/info must expose GET")
+	if doc.Paths["/v1/keys/info"].Get == nil {
+		t.Fatalf("/v1/keys/info must expose GET")
 	}
-	if !requiresBearer(keysPath.Post) || !requiresBearer(keysPath.Get) || !requiresBearer(doc.Paths["/keys/info"].Get) {
-		t.Fatalf("expected all /keys operations to require BearerAuth")
+	if !requiresBearer(keysPath.Post) || !requiresBearer(keysPath.Get) || !requiresBearer(doc.Paths["/v1/keys/info"].Get) {
+		t.Fatalf("expected all /v1/keys operations to require BearerAuth")
 	}
 }
 

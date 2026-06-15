@@ -3,7 +3,7 @@ PLUGIN_BINARY := kms-vault-plugin
 PLUGIN_OUT := vault/plugins/$(PLUGIN_BINARY)
 SWAG ?= $(shell go env GOPATH)/bin/swag
 
-.PHONY: build build-plugin test lint swagger swagger-check dev-up dev-down run-gateway
+.PHONY: build build-plugin test lint swagger swagger-check dev-up dev-down run-gateway scrub-env
 
 build:
 	go build -o bin/$(BINARY) ./cmd/kms-wrapper
@@ -33,3 +33,11 @@ dev-down:
 
 run-gateway:
 	go run ./cmd/kms-wrapper serve --config config.yaml
+
+# scrub-env resets the local (gitignored) .env back to the placeholder values
+# from .env.example. Useful between dev-up sessions so a live token issued by
+# vault/init.sh doesn't accidentally persist across a context switch.
+scrub-env:
+	@if [ ! -f .env.example ]; then echo "missing .env.example"; exit 1; fi
+	@cp .env.example .env
+	@echo "scrubbed .env back to .env.example placeholders"

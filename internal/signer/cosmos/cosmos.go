@@ -6,13 +6,33 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"math/big"
 
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/ripemd160"
 	"google.golang.org/protobuf/encoding/protowire"
+
+	apptypes "github.com/ryan-truong/kms-wrapper/pkg/types"
 )
+
+// canonicaliseJSON mirrors cosmos-sdk/types.SortJSON byte-for-byte: an
+// Unmarshal-then-Marshal round-trip through encoding/json, which orders
+// object keys alphabetically and strips insignificant whitespace. We inline
+// this here rather than importing cosmos-sdk/types directly because the
+// types package transitively pulls in cometbft and the entire chain
+// machinery — far more than a sign-bytes helper needs. Keeping the routine
+// byte-equivalent to cosmos-sdk's is what lets a chain re-derive the same
+// hash on verify.
+func canonicaliseJSON(in []byte) ([]byte, error) {
+	var v any
+	if err := json.Unmarshal(in, &v); err != nil {
+		return nil, err
+	}
+	return json.Marshal(v)
+}
 
 type Vault interface {
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
@@ -72,21 +92,97 @@ func (s *Signer) SignDirect(ctx context.Context, keyPath string, signDocBytes []
 	return s.signHash(ctx, keyPath, sha256.Sum256(signDocBytes))
 }
 
-// SignAmino signs a Cosmos Amino JSON sign document.
-// Numbers are decoded as json.Number to avoid float64 precision loss on large integer values
-// (e.g. coin amounts, timestamps) during JSON round-trip canonicalization.
+// SignAmino signs a Cosmos Amino JSON sign document. The input is first
+// scanned for duplicate JSON keys at any nesting depth — Go's stdlib does
+// not flag these, and a chain that re-derives sign bytes via canonical
+// JSON would resolve the duplicate differently than the parser the signer
+// used. The signer then canonicalises the input via cosmos-sdk's own
+// `types.SortJSON` (the same function the chain uses on verify), hashes
+// with SHA-256, and signs.
 func (s *Signer) SignAmino(ctx context.Context, keyPath string, stdSignDocJSON []byte) ([]byte, []byte, error) {
-	dec := json.NewDecoder(bytes.NewReader(stdSignDocJSON))
-	dec.UseNumber()
-	var doc any
-	if err := dec.Decode(&doc); err != nil {
+	if err := detectDuplicateJSONKeys(stdSignDocJSON); err != nil {
 		return nil, nil, err
 	}
-	canonical, err := json.Marshal(doc)
+	canonical, err := canonicaliseJSON(stdSignDocJSON)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("canonicalise amino sign doc: %w", err)
 	}
 	return s.signHash(ctx, keyPath, sha256.Sum256(canonical))
+}
+
+// detectDuplicateJSONKeys walks the JSON token stream and reports the first
+// duplicate-key collision at any object scope. Returns an error wrapping
+// apptypes.ErrBadRequest so the gateway maps it to HTTP 400.
+func detectDuplicateJSONKeys(raw []byte) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	return scanJSONValue(dec)
+}
+
+// scanJSONValue consumes one JSON value from dec, recursing into objects and
+// arrays. For objects, it tracks the set of seen keys at the current scope
+// and aborts on the first repeat.
+func scanJSONValue(dec *json.Decoder) error {
+	tok, err := dec.Token()
+	if err != nil {
+		if err == io.EOF {
+			return nil
+		}
+		return err
+	}
+	switch t := tok.(type) {
+	case json.Delim:
+		switch t {
+		case '{':
+			return scanJSONObject(dec)
+		case '[':
+			return scanJSONArray(dec)
+		default:
+			return fmt.Errorf("unexpected JSON delimiter %q", t)
+		}
+	default:
+		// Scalar — no nesting to scan.
+		return nil
+	}
+}
+
+func scanJSONObject(dec *json.Decoder) error {
+	seen := make(map[string]struct{})
+	for dec.More() {
+		keyTok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		key, ok := keyTok.(string)
+		if !ok {
+			return fmt.Errorf("JSON object key not a string: %T", keyTok)
+		}
+		if _, dup := seen[key]; dup {
+			return fmt.Errorf("duplicate key in amino sign doc: %s: %w", key, apptypes.ErrBadRequest)
+		}
+		seen[key] = struct{}{}
+		if err := scanJSONValue(dec); err != nil {
+			return err
+		}
+	}
+	// Consume the closing '}'.
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func scanJSONArray(dec *json.Decoder) error {
+	for dec.More() {
+		if err := scanJSONValue(dec); err != nil {
+			return err
+		}
+	}
+	// Consume the closing ']'.
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Signer) signHash(ctx context.Context, keyPath string, hash [32]byte) ([]byte, []byte, error) {

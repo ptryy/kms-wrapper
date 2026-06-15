@@ -1,32 +1,11 @@
 package vault
 
-import (
-	"errors"
-	"regexp"
-	"strings"
-)
+import "github.com/ryan-truong/kms-wrapper/internal/keypath"
 
-var segmentRE = regexp.MustCompile(`^[a-z0-9_-]+$`)
-
-var reservedChains = map[string]struct{}{
-	"evm": {}, "eth": {}, "mantra": {}, "cosmos": {}, "osmosis": {},
-}
-
-func ValidateKeyPath(path string) error {
-	parts := strings.Split(path, "/")
-	if len(parts) != 3 {
-		return errors.New("key path must have format {project}/{chain}/{username}")
-	}
-	for _, part := range parts {
-		if part == "" {
-			return errors.New("key path segments must not be empty")
-		}
-		if !segmentRE.MatchString(part) {
-			return errors.New("key path segments must match [a-z0-9_-]")
-		}
-	}
-	return nil
-}
+// ValidateKeyPath delegates to internal/keypath so that the gateway, CLI, and
+// the Vault plugin (which cannot import this package without pulling in the
+// whole vault/api client surface) all share a single validator.
+func ValidateKeyPath(path string) error { return keypath.Validate(path) }
 
 // ToVaultPath returns the Vault logical path for the key entry inside the
 // kms-vault-plugin (`kms/keys/<path>`).

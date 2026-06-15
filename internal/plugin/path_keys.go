@@ -9,6 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
+
+	"github.com/ryan-truong/kms-wrapper/internal/keypath"
 )
 
 // keyStoragePrefix is the storage namespace under which KeyEntry records live.
@@ -77,6 +79,9 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 	if name == "" {
 		return logical.ErrorResponse("key name is required"), nil
 	}
+	if err := keypath.Validate(name); err != nil {
+		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
+	}
 
 	// Idempotent: if the key already exists, return its current info without regenerating.
 	existing, err := b.loadKey(ctx, req, name)
@@ -135,6 +140,9 @@ func (b *backend) handleListKeys(ctx context.Context, req *logical.Request, data
 	if data != nil {
 		if v, ok := data.GetOk("name"); ok {
 			if s, ok := v.(string); ok && s != "" {
+				if err := keypath.ValidateListPrefix(s); err != nil {
+					return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
+				}
 				prefix = keyStoragePrefix + s
 				if prefix[len(prefix)-1] != '/' {
 					prefix += "/"
@@ -148,6 +156,7 @@ func (b *backend) handleListKeys(ctx context.Context, req *logical.Request, data
 	}
 	return logical.ListResponse(names), nil
 }
+
 
 func (b *backend) loadKey(ctx context.Context, req *logical.Request, name string) (*KeyEntry, error) {
 	raw, err := req.Storage.Get(ctx, keyStoragePrefix+name)

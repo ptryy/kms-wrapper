@@ -8,6 +8,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/hashicorp/vault/sdk/framework"
 	"github.com/hashicorp/vault/sdk/logical"
+
+	"github.com/ryan-truong/kms-wrapper/internal/keypath"
 )
 
 func (b *backend) pathsSign() []*framework.Path {
@@ -37,6 +39,9 @@ func (b *backend) handleSign(ctx context.Context, req *logical.Request, data *fr
 	nameStr, _ := name.(string)
 	if nameStr == "" {
 		return logical.ErrorResponse("key name is required"), nil
+	}
+	if err := keypath.Validate(nameStr); err != nil {
+		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
 	}
 
 	inputRaw, ok := data.GetOk("input")

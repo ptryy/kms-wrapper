@@ -6,9 +6,12 @@ var (
 	ErrNotFound     = errors.New("not found")
 	ErrPermission   = errors.New("permission denied")
 	ErrInvalidInput = errors.New("invalid input")
+	ErrBadRequest   = errors.New("bad request")
 )
 
 type EVMSignRequest struct {
+	// Type discriminates which payload field is consulted. Required.
+	Type            string `json:"type" binding:"required" enums:"raw_tx,personal_message,eip712_digest"`
 	KeyPath         string `json:"key_path"`
 	ChainID         int64  `json:"chain_id,omitempty"`
 	RawTx           string `json:"raw_tx,omitempty"`
@@ -50,9 +53,26 @@ type SignatureParts struct {
 	V uint64 `json:"v"`
 }
 
+// EVMSignRawTxResponse is returned for type=raw_tx requests.
+type EVMSignRawTxResponse struct {
+	SignedTx string         `json:"signed_tx"`
+	Parts    SignatureParts `json:"signature_parts"`
+}
+
+// EVMSignPersonalResponse is returned for type=personal_message and
+// type=eip712_digest requests.
+type EVMSignPersonalResponse struct {
+	Signature string `json:"signature" pattern:"^0x[0-9a-fA-F]{130}$"`
+}
+
+// SignResponse is the legacy union shape returned by Cosmos sign and (until
+// the OpenAPI postprocess split is in place) the EVM signing path. The
+// Signature field is intentionally a string here; the OpenAPI surface
+// splits it into two typed response variants via EVMSignRawTxResponse and
+// EVMSignPersonalResponse.
 type SignResponse struct {
 	SignedTx      string          `json:"signed_tx,omitempty"`
-	Signature     any             `json:"signature,omitempty"`
+	Signature     string          `json:"signature,omitempty"`
 	PubKey        string          `json:"pub_key,omitempty"`
 	Parts         *SignatureParts `json:"signature_parts,omitempty"`
 	CosmosAddress string          `json:"cosmos_address,omitempty"`
@@ -75,6 +95,7 @@ type KeyCreateResponse struct {
 }
 
 type KeyListResponse struct {
-	Keys  []string `json:"keys" example:"evm/alice,cosmos/bob"`
-	Count int      `json:"count" example:"2"`
+	Keys       []string `json:"keys" example:"evm/alice,cosmos/bob"`
+	Count      int      `json:"count" example:"2"`
+	NextCursor string   `json:"next_cursor"`
 }

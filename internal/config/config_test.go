@@ -138,8 +138,8 @@ func TestLoadSwaggerConfigSources(t *testing.T) {
 		if !cfg.Gateway.SwaggerEnabled {
 			t.Fatal("expected gateway.swagger_enabled default true")
 		}
-		if cfg.Gateway.SwaggerAuth {
-			t.Fatal("expected gateway.swagger_auth default false")
+		if !cfg.Gateway.SwaggerAuth {
+			t.Fatal("expected gateway.swagger_auth default true")
 		}
 	})
 
