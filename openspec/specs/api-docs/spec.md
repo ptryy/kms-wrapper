@@ -1,8 +1,6 @@
 ## Purpose
 Define the OpenAPI 3.0 specification generation, CI enforcement, and documentation accuracy requirements for the gateway API surface.
-
 ## Requirements
-
 ### Requirement: OpenAPI 3.0 specification is generated from handler annotations
 The project SHALL produce an OpenAPI 3.0 specification describing all public gateway endpoints (`/health`, `/sign/evm`, `/sign/cosmos`, `/swagger/*`). The spec SHALL be generated from `swaggo/swag` annotations placed adjacent to the handler functions in `internal/gateway/gateway.go` and the request/response types in `pkg/types/types.go`. The generated artifacts SHALL be checked into the repository under `docs/`.
 
@@ -34,19 +32,27 @@ The CI pipeline SHALL run a `swagger-check` step that regenerates the docs and f
 ---
 
 ### Requirement: Spec describes the EVM payload union with `oneOf`
-The OpenAPI 3.0 spec for `POST /sign/evm` SHALL describe its request body as `oneOf` over three discriminated variants: a raw-transaction variant (requires `key_path`, `chain_id`, `raw_tx`), a personal-message variant (requires `key_path`, `personal_message`), and an EIP-712 variant (requires `key_path`, `eip712_digest`).
+The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` between three payload variants (raw transaction, personal message, and EIP-712 digest). The `oneOf` SHALL include an explicit `discriminator` block keyed on a required string property `type` with `mapping` entries for `raw_tx`, `personal_message`, and `eip712_digest`.
 
 #### Scenario: Raw-tx variant present
-- **WHEN** consumers inspect the spec at `/swagger/doc.json`
-- **THEN** the `POST /sign/evm` request body lists a schema requiring `key_path`, `chain_id` (exclusive minimum 0), and `raw_tx` (hex string)
+- **WHEN** a client inspects the spec at `components.schemas.EVMSignRequest.oneOf`
+- **THEN** one variant has a `properties.raw_tx` field of type `string`
 
 #### Scenario: EIP-712 digest length constraint
-- **WHEN** consumers inspect the EIP-712 variant schema
-- **THEN** `eip712_digest` carries a `pattern` constraint matching exactly 32 hex bytes (with optional `0x` prefix)
+- **WHEN** the EIP-712 digest variant schema is inspected
+- **THEN** `properties.eip712_digest` has `pattern` enforcing a 32-byte hex string (`^0x[0-9a-fA-F]{64}$` or equivalent)
 
 #### Scenario: Personal-message variant present
-- **WHEN** consumers inspect the spec
-- **THEN** a variant requires only `key_path` and `personal_message` (hex string) and explicitly does not require `chain_id`
+- **WHEN** the personal-message variant schema is inspected
+- **THEN** `properties.personal_message` is a `string` with `format: hex`
+
+#### Scenario: Discriminator drives codegen
+- **WHEN** a client inspects `components.schemas.EVMSignRequest`
+- **THEN** the schema has `discriminator: { propertyName: "type", mapping: { raw_tx: "#/components/schemas/EVMSignRawTxRequest", personal_message: "#/components/schemas/EVMSignPersonalRequest", eip712_digest: "#/components/schemas/EVMSignEIP712Request" } }`
+
+#### Scenario: Type field is required on every variant
+- **WHEN** any variant schema is inspected
+- **THEN** `required` contains the string `"type"` AND the variant's payload field
 
 ---
 
@@ -90,3 +96,28 @@ The OpenAPI 3.0 spec SHALL describe a shared `ErrorResponse` schema (object with
 #### Scenario: 401 references ErrorResponse
 - **WHEN** consumers inspect the 401 response of `POST /sign/evm`
 - **THEN** the response body schema references `#/components/schemas/ErrorResponse`
+
+### Requirement: Spec describes the EVM sign response by variant
+The OpenAPI 3.0 document SHALL describe the EVM sign response as a `oneOf` between a raw-tx response (`{signed_tx, signature_parts}`) and a digest/message response (`{signature}`). The spec SHALL NOT include a top-level `signature` field typed as free-form `object` or empty schema `{}`.
+
+#### Scenario: Raw-tx response includes signature_parts
+- **WHEN** a client inspects `components.schemas.EVMSignRawTxResponse.properties`
+- **THEN** there is a `signed_tx: {type: string}` field and a `signature_parts: {type: object, properties: {r: {type: string}, s: {type: string}, v: {type: integer}}}` field — and NO `signature` field
+
+#### Scenario: Personal/EIP-712 response uses typed string
+- **WHEN** a client inspects `components.schemas.EVMSignPersonalResponse.properties.signature`
+- **THEN** the schema is `{type: string, pattern: "^0x[0-9a-fA-F]{130}$"}` (65-byte hex) — typed, not `{}`
+
+---
+
+### Requirement: Spec advertises `/v1/`-prefixed paths
+The OpenAPI 3.0 document `paths` object SHALL key every public route under `/v1/` (e.g. `/v1/sign/evm`, `/v1/sign/cosmos`, `/v1/keys`, `/v1/keys/info`, `/v1/health`). The bare (un-prefixed) routes SHALL NOT appear as separate entries in `paths`; the dual-mount at runtime is for backwards compatibility only.
+
+#### Scenario: Versioned paths advertised
+- **WHEN** a client retrieves `GET /swagger/doc.json`
+- **THEN** every operation key in `paths` starts with `/v1/`; no bare `/sign/`, `/keys`, or `/health` entries exist in the `paths` object
+
+#### Scenario: Spec is self-consistent for codegen
+- **WHEN** a tool such as `openapi-generator` consumes the spec
+- **THEN** the generated client targets `/v1/...` paths and the `EVMSignRequest` discriminator drives a typed sealed-class-style hierarchy
+

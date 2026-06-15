@@ -25,6 +25,8 @@ The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` betwee
 
 ---
 
+## ADDED Requirements
+
 ### Requirement: Spec describes the EVM sign response by variant
 The OpenAPI 3.0 document SHALL describe the EVM sign response as a `oneOf` between a raw-tx response (`{signed_tx, signature_parts}`) and a digest/message response (`{signature}`). The spec SHALL NOT include a top-level `signature` field typed as free-form `object` or empty schema `{}`.
 
@@ -37,8 +39,6 @@ The OpenAPI 3.0 document SHALL describe the EVM sign response as a `oneOf` betwe
 - **THEN** the schema is `{type: string, pattern: "^0x[0-9a-fA-F]{130}$"}` (65-byte hex) — typed, not `{}`
 
 ---
-
-## ADDED Requirements
 
 ### Requirement: Spec advertises `/v1/`-prefixed paths
 The OpenAPI 3.0 document `paths` object SHALL key every public route under `/v1/` (e.g. `/v1/sign/evm`, `/v1/sign/cosmos`, `/v1/keys`, `/v1/keys/info`, `/v1/health`). The bare (un-prefixed) routes SHALL NOT appear as separate entries in `paths`; the dual-mount at runtime is for backwards compatibility only.
