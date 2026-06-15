@@ -5,7 +5,7 @@ The deep review surfaced eight correctness and API-shape defects that, while ind
 ## What Changes
 
 - **Fix CLI Cosmos sign error shadowing.** `cmd/kms-wrapper/root.go:225-236` declares an inner `err` inside a `case` block, so `SignDirect` failures go out of scope and the CLI prints zero-bytes as success. Reshape to use the outer `err`.
-- **Use cosmos-sdk canonical JSON for `SignAmino`.** Replace the `json.Decode` → `json.Marshal` round-trip in `internal/signer/cosmos/cosmos.go:SignAmino` with `sdk.SortJSON` (or `legacy.Cdc.MarshalJSON`) so the signed document matches what the chain re-derives. Reject inputs with duplicate JSON keys explicitly.
+- **Use cosmos-sdk canonical JSON for `SignAmino`.** Replace the `json.Decode` → `json.Marshal` round-trip in `internal/signer/cosmos/cosmos.go:SignAmino` with `types.SortJSON` from `github.com/cosmos/cosmos-sdk/types` (or `legacy.Cdc.MarshalJSON`) so the signed document matches what the chain re-derives. Reject inputs with duplicate JSON keys explicitly.
 - **Propagate swallowed handler errors.** `internal/gateway/gateway.go:359` (`_ = tx.UnmarshalBinary(out)`) and `:452` (`addr, _ := DeriveCosmosAddressFromCompressed(...)`) become non-discarding; on error the handler returns HTTP 500 with a structured error. Add explicit table tests for both failure paths.
 - **Add `/v1/` API prefix.** All current routes (`/sign/*`, `/keys`, `/keys/info`, `/health`) SHALL be mounted under `/v1/` as well, served alongside the bare routes for one minor-version cycle. The OpenAPI spec advertises `/v1/` paths.
 - **Type the `SignResponse.Signature` field.** Replace `Signature any` (which renders as `{}` in OpenAPI) with a typed `string` for the personal-message/eip712 variants OR remove it in favour of the structured `signature_parts`. Update the spec and clients accordingly.
@@ -27,11 +27,11 @@ The deep review surfaced eight correctness and API-shape defects that, while ind
 
 ## Impact
 
-- `internal/signer/cosmos/cosmos.go`: import cosmos-sdk's `sdk.SortJSON`/`legacy.Cdc.MarshalJSON`; remove the home-grown re-marshal.
+- `internal/signer/cosmos/cosmos.go`: import cosmos-sdk's `types.SortJSON` (or `legacy.Cdc.MarshalJSON`) from `github.com/cosmos/cosmos-sdk/types`; remove the home-grown re-marshal.
 - `internal/gateway/gateway.go`: error propagation in `signEVM` / `signCosmos`; `Allow` header in `methodNotAllowedRewriter`; pagination logic on `/keys`; `/v1/` route-mount loop; 201/200 split on POST /keys.
 - `pkg/types/types.go`: typed `Signature` field; explicit discriminator field on EVM sign request types; `KeyListResponse` carries `next_cursor`.
 - `cmd/kms-wrapper/root.go`: fix the cosmos sign error scoping; non-zero exit on any signing failure.
 - `cmd/swagger-postprocess/main.go`: emit `discriminator` block on EVM payload `oneOf`.
-- `docs/openapi.json` / `docs/openapi.yaml`: regenerated.
+- `docs/swagger.json` / `docs/swagger.yaml`: regenerated via `make swagger` (these are the actual artifact filenames produced by `swag` + `cmd/swagger-postprocess`; the repo does not emit `openapi.json`/`openapi.yaml`).
 - Test additions: `gateway_test.go` (UnmarshalBinary error, cosmos address derivation error, 405 `Allow` header, pagination); `cosmos_test.go` (duplicate-key rejection, canonical-JSON match against cosmos-sdk reference); `root_test.go` (CLI cosmos sign failure exit code).
 - **Non-breaking** for HTTP callers: bare paths continue to work alongside `/v1/`. Codegen clients regenerating against the new spec will see `Signature` as a string instead of free-form object — this is a typing improvement, not a breaking wire change. Cosmos amino-sign output may change for inputs that were not already canonical; this is the bug fix and is intentional.

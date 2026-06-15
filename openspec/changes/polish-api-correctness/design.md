@@ -3,7 +3,7 @@
 The eight issues bundled here cluster naturally:
 
 - **Silent failures (high-severity correctness):** CLI cosmos shadowing, swallowed gateway handler errors. These bugs produce confidently-wrong output and are the kind of defect that surfaces on-chain weeks later.
-- **AMINO canonicalisation (high-severity correctness):** Go's `json.Marshal` is not Cosmos canonical JSON. The fix is to use cosmos-sdk's own `sdk.SortJSON` (which produces the exact form the chain re-derives during signature verification).
+- **AMINO canonicalisation (high-severity correctness):** Go's `json.Marshal` is not Cosmos canonical JSON. The fix is to use cosmos-sdk's own `types.SortJSON` (which produces the exact form the chain re-derives during signature verification).
 - **API surface polish (medium):** versioning, discriminator, pagination, status codes, RFC compliance. Each one is small; together they materially improve the integrator experience and OpenAPI codegen output.
 
 None of these require new infrastructure or new dependencies beyond the canonical-JSON helper that cosmos-sdk already exposes (the SDK is already a direct module dependency in `go.mod`; this repo uses Go modules and does not vendor). The cost of skipping the polish items is incremental drift between the spec and the implementation.
@@ -31,23 +31,23 @@ None of these require new infrastructure or new dependencies beyond the canonica
 
 **Rationale:** This is the smallest fix; preserves the existing case-statement structure. Adding the test (a smoke test asserting non-empty `sig`/`pub` on success and non-zero exit on simulated failure) prevents regression. Linting with `errorlint` and `revive` would have caught this — that's a separate concern in `.golangci.yaml` (out of scope here; flagged as a nit elsewhere).
 
-### D2 — `sdk.SortJSON` for AMINO canonicalisation
+### D2 — `types.SortJSON` for AMINO canonicalisation
 
 **Decision:** Replace the body of `SignAmino` (currently `json.Decode` with `UseNumber` → `json.Marshal`) with:
 
 ```go
-sorted, err := sdk.SortJSON(rawSignDocBytes)
+sorted, err := types.SortJSON(rawSignDocBytes)
 if err != nil { return ..., fmt.Errorf("canonicalise amino sign doc: %w", err) }
 // hash sorted bytes with SHA-256, then sign
 ```
 
 Additionally, before passing to `SortJSON`, the function SHALL detect duplicate JSON keys in the raw bytes (Go's stdlib does not flag duplicates; walk the raw bytes with a streaming `json.Decoder` in token mode, tracking seen keys per object scope, or use a recursive uniqueness check over the parsed token stream). On duplicate detection, `SignAmino` SHALL return a typed error (e.g. `fmt.Errorf("duplicate key in amino sign doc: %s", key)`); the REST gateway handler SHALL map that error to HTTP 400 — the signer itself does not emit HTTP status codes.
 
-**Rationale:** `sdk.SortJSON` is the exact code cosmos-sdk uses to re-derive sign bytes during signature verification. Using it eliminates the entire class of "Go-canonical vs Cosmos-canonical" mismatch. Duplicate-key rejection prevents the "last-wins ambiguity" footgun (the same input bytes can deserialise into two different documents under different parsers).
+**Rationale:** `types.SortJSON` is the exact code cosmos-sdk uses to re-derive sign bytes during signature verification. Using it eliminates the entire class of "Go-canonical vs Cosmos-canonical" mismatch. Duplicate-key rejection prevents the "last-wins ambiguity" footgun (the same input bytes can deserialise into two different documents under different parsers).
 
 **Alternative considered — keep `json.Marshal` but add a fixup pass:** rejected; the failure modes (`Coin.amount` integer-vs-string, escaping rules) are too many to enumerate.
 
-**Alternative considered — use `legacy.Cdc.MarshalJSON`:** equivalent for our use case but pulls in more cosmos-sdk surface. `sdk.SortJSON` is the minimal correct primitive.
+**Alternative considered — use `legacy.Cdc.MarshalJSON`:** equivalent for our use case but pulls in more cosmos-sdk surface. `types.SortJSON` is the minimal correct primitive.
 
 ### D3 — Propagate swallowed handler errors
 

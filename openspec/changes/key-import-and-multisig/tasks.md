@@ -19,7 +19,7 @@ Conflict-resolution rule if implementations interleave: typed-errors and `/v1/` 
 
 ## 1. Dependencies & Config
 
-- [ ] 1.1 Add `tyler-smith/go-bip39` to `go.mod` for BIP39 mnemonic entropy and validation
+- [ ] 1.1 Add `github.com/tyler-smith/go-bip39` to `go.mod` for BIP39 mnemonic entropy and validation
 - [ ] 1.2 Add `github.com/btcsuite/btcd/btcutil/hdkeychain` (or `github.com/cosmos/btcutil`) for BIP44 HD key derivation
 - [ ] ~~1.3~~ ~~Extend `Config` struct with `MetadataKVMount` field~~ — **removed**: metadata is plugin-native (D9), no KV mount needed
 - [ ] 1.4 Update `.env.example` to remove `KMS_METADATA_KV_MOUNT`; note Vault 1.17+ plugin requirement
