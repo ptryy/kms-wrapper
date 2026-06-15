@@ -91,15 +91,15 @@ Constraints carried forward from the existing design:
 
 ### D12: New REST routes
 
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| POST | `/keys/import` | Bearer | Import EVM or Cosmos-derived key via plugin direct import |
-| POST | `/sign/cosmos/partial` | Bearer | Return partial Cosmos multisig signature |
-| POST | `/sign/evm/safe` | Bearer | Sign Gnosis Safe safeTxHash |
+| Method | Primary Path | Bare Alias (deprecated) | Auth | Purpose |
+|--------|--------------|------------------------|------|---------|
+| POST | `/v1/keys/import` | `/keys/import` | Bearer | Import EVM or Cosmos-derived key via plugin direct import |
+| POST | `/v1/sign/cosmos/partial` | `/sign/cosmos/partial` | Bearer | Return partial Cosmos multisig signature |
+| POST | `/v1/sign/evm/safe` | `/sign/evm/safe` | Bearer | Sign Gnosis Safe safeTxHash |
 
-All existing routes unchanged.
+All routes are dual-mounted per the `polish-api-correctness` change: the `/v1/...` form is primary and advertised in OpenAPI; the bare-path form responds identically but emits `Deprecation: true` and `Sunset` headers. All existing pre-`/v1/` routes are unchanged in behaviour.
 
-> **Note on `/keys/import` auth**: The import operation is significantly more sensitive than signing (it introduces new key material into Vault). A separate elevated bearer token (`KMS_IMPORT_TOKEN`) is recommended for production — see Open Questions.
+> **Note on `/keys/import` auth (resolved)**: authorization for import is enforced at the Vault layer via the scoped policy installed by `harden-vault-backend` (`vault/init.sh`). A token whose policy lacks `create` on `kms/keys/+/import` cannot perform imports regardless of the bearer token presented at the gateway. A separate `KMS_IMPORT_TOKEN` is NOT introduced — see Open Question #2 (resolved).
 
 ---
 
@@ -107,7 +107,7 @@ All existing routes unchanged.
 
 | Command | Flags | Purpose |
 |---------|-------|---------|
-| `kms-wrapper keys import` | `--path`, `--chain` (evm\|cosmos), `--private-key` OR `--mnemonic`, `--derivation-path` | Import key via Transit wrapping |
+| `kms-wrapper keys import` | `--path`, `--chain` (evm\|cosmos), `--private-key` OR `--mnemonic`, `--derivation-path` | Import key via plugin direct-import endpoint |
 | `kms-wrapper sign cosmos partial` | `--path`, `--hrp`, `--mode`, `--sign-doc`, `--signer-index` | Partial Cosmos multisig sign |
 | `kms-wrapper sign evm safe` | `--path`, `--safe-tx-hash` | Sign Gnosis Safe safeTxHash |
 
@@ -126,5 +126,5 @@ All existing routes unchanged.
 ## Open Questions
 
 1. **Derivation path defaults**: Should MANTRA chain use `m/44'/118'/0'/0/0` (Cosmos generic) or a MANTRA-specific coin type? Confirm with chain team before implementation.
-2. **Import endpoint auth**: Should `POST /keys/import` require an elevated bearer token (separate `KMS_IMPORT_TOKEN`) vs. the standard gateway token? The import operation is significantly more sensitive than signing. Recommend: yes, separate token, but left open for operator feedback.
+2. **Import endpoint auth**: ~~Should `POST /keys/import` require an elevated bearer token (separate `KMS_IMPORT_TOKEN`) vs. the standard gateway token?~~ **Resolved**: deferred to the Vault policy boundary. The `harden-vault-backend` change installs a scoped policy via `vault/init.sh` and refuses to start with a root token; tokens whose policy lacks `create` on `kms/keys/+/import` cannot perform imports even if they hold the gateway bearer. This provides a cleaner authz boundary than a second bearer secret to rotate. Operators wanting two-person review on imports SHOULD use a per-operator Vault token issued with a stricter, time-bound policy.
 3. **Metadata KV mount**: ~~Use `secret/` KV v2 mount or a dedicated `kms-metadata/` mount?~~ **Resolved by D9**: metadata is now stored plugin-native alongside the key. No separate KV mount required.
