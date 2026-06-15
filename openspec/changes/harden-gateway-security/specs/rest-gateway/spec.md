@@ -114,7 +114,7 @@ The gateway SHALL honour `X-Forwarded-Proto` and `X-Forwarded-Host` only when th
 ---
 
 ### Requirement: Weak-token startup guard
-The gateway SHALL refuse to start when `gateway.token` is empty or matches a known-weak placeholder (`change-me`, `dev`, `dev-token`, `password`) unless `KMS_DEV=true` is set. The same rule SHALL apply to `vault.token` (with `root` added to the weak list — covered by the `vault-backend` capability).
+The gateway SHALL refuse to start unconditionally (no `KMS_DEV` bypass) when `gateway.token` is empty. The gateway SHALL also refuse to start when `gateway.token` matches a known-weak placeholder (`change-me`, `dev`, `dev-token`, `password`) unless `KMS_DEV=true` is set. The equivalent rule applies to `vault.token` (with `root` added to the weak list — covered by the `vault-backend` capability).
 
 #### Scenario: Default placeholder refused
 - **WHEN** `gateway.token=change-me` and `KMS_DEV` is not set

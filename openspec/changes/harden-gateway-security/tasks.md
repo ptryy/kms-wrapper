@@ -47,9 +47,8 @@
 
 ## 7. `.env` cleanup
 
-- [ ] 7.1 Replace contents of `.env` in the repo root with the same placeholder values as `.env.example` (no `dev-token`, no `root` token). Confirm the file remains gitignored.
-- [ ] 7.2 Add a Makefile target `make scrub-env` that resets `.env` to placeholder values, for use after `make dev-up`.
-- [ ] 7.3 Document the new behavior in `README.md`: developers must `KMS_DEV=true` to run the gateway with placeholder tokens, or follow the new `vault/init.sh` flow to receive a scoped token.
+- [ ] 7.1 Add a Makefile target `make scrub-env` that resets a developer's local (gitignored) `.env` to the placeholder values from `.env.example` (no `dev-token`, no `root` token). `.env` is not version-controlled, so this is purely a local convenience for after `make dev-up`. Confirm `.gitignore` continues to list `.env` and `.env.*` with `!.env.example` exception.
+- [ ] 7.2 Document the new behavior in `README.md`: developers must `KMS_DEV=true` to run the gateway with placeholder tokens, or follow the new `vault/init.sh` flow to receive a scoped token; recommend running `make scrub-env` between sessions.
 
 ## 8. Verification and archive
 

@@ -6,7 +6,7 @@ The eight issues bundled here cluster naturally:
 - **AMINO canonicalisation (high-severity correctness):** Go's `json.Marshal` is not Cosmos canonical JSON. The fix is to use cosmos-sdk's own `sdk.SortJSON` (which produces the exact form the chain re-derives during signature verification).
 - **API surface polish (medium):** versioning, discriminator, pagination, status codes, RFC compliance. Each one is small; together they materially improve the integrator experience and OpenAPI codegen output.
 
-None of these require new infrastructure or new dependencies beyond cosmos-sdk's already-vendored canonical-JSON helper. The cost of skipping the polish items is incremental drift between the spec and the implementation.
+None of these require new infrastructure or new dependencies beyond the canonical-JSON helper that cosmos-sdk already exposes (the SDK is already a direct module dependency in `go.mod`; this repo uses Go modules and does not vendor). The cost of skipping the polish items is incremental drift between the spec and the implementation.
 
 ## Goals / Non-Goals
 
@@ -41,7 +41,7 @@ if err != nil { return ..., fmt.Errorf("canonicalise amino sign doc: %w", err) }
 // hash sorted bytes with SHA-256, then sign
 ```
 
-Additionally, before passing to `SortJSON`, the function SHALL detect duplicate JSON keys in the raw bytes (Go's stdlib does not flag duplicates; walk the raw bytes with a streaming `json.Decoder` in token mode, tracking seen keys per object scope, or use a recursive uniqueness check over the parsed token stream). Reject duplicate-key inputs with HTTP 400.
+Additionally, before passing to `SortJSON`, the function SHALL detect duplicate JSON keys in the raw bytes (Go's stdlib does not flag duplicates; walk the raw bytes with a streaming `json.Decoder` in token mode, tracking seen keys per object scope, or use a recursive uniqueness check over the parsed token stream). On duplicate detection, `SignAmino` SHALL return a typed error (e.g. `fmt.Errorf("duplicate key in amino sign doc: %s", key)`); the REST gateway handler SHALL map that error to HTTP 400 — the signer itself does not emit HTTP status codes.
 
 **Rationale:** `sdk.SortJSON` is the exact code cosmos-sdk uses to re-derive sign bytes during signature verification. Using it eliminates the entire class of "Go-canonical vs Cosmos-canonical" mismatch. Duplicate-key rejection prevents the "last-wins ambiguity" footgun (the same input bytes can deserialise into two different documents under different parsers).
 

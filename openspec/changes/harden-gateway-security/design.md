@@ -7,7 +7,7 @@ The REST gateway's auth, rate limiting, and trusted-input handling were sized fo
 3. The bearer-token compare via `subtle.ConstantTimeCompare` returns 0 immediately on unequal length, leaking the expected token length via timing.
 4. `requestOrigin` trusts `X-Forwarded-Proto` and `Host` unconditionally and reflects them into the served OpenAPI `servers[].url`. Combined with `swagger_auth` defaulting to `false`, anyone reachable can cause Swagger UI to advertise an attacker-controlled origin to subsequent visitors.
 
-The `.env` file in the working tree is gitignored, but its contents (`KMS_GATEWAY_TOKEN=dev-token`, `VAULT_TOKEN=root`) represent the kind of "carried forward from dev" config that becomes a production credential if anyone `git add -f`s or zips up the repo.
+A local `.env` file is the standard dev workflow here — gitignored, with `.env.example` as the only tracked template. The risk is that operators following the dev workflow leave weak placeholder values (e.g. `KMS_GATEWAY_TOKEN=dev-token`, `VAULT_TOKEN=root`) in their local `.env`, then carry the same file forward into a production deploy via `git add -f`, zipping the repo, or copying the workflow onto a server. This change makes those weak values fail-closed at startup so a misconfigured `.env` cannot silently become live credentials.
 
 ## Goals / Non-Goals
 

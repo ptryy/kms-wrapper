@@ -100,7 +100,7 @@ The REST gateway SHALL expose `GET /keys` (and equivalently `GET /v1/keys`) acce
 
 #### Scenario: Invalid limit
 - **WHEN** `?limit=99999` is passed
-- **THEN** the gateway clamps to the maximum (1000) and returns the clamped page; OR returns HTTP 400 with `{"error": "limit must be between 1 and 1000"}` (implementation MAY choose either approach but SHALL document which in OpenAPI)
+- **THEN** the gateway clamps to the maximum (1000) and returns the clamped page (per the implementation choice documented in `tasks.md` 6.1; values below 1 SHALL also be clamped to the default of 100)
 
 #### Scenario: Tampered cursor
 - **WHEN** `?cursor=not-a-valid-cursor` is passed

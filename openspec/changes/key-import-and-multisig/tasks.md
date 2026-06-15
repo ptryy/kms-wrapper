@@ -20,7 +20,7 @@ Conflict-resolution rule if implementations interleave: typed-errors and `/v1/` 
 ## 1. Dependencies & Config
 
 - [ ] 1.1 Add `tyler-smith/go-bip39` to `go.mod` for BIP39 mnemonic entropy and validation
-- [ ] 1.2 Add `btcsuite/btcd/hdkeychain` (or `cosmos/btcutil`) for BIP44 HD key derivation
+- [ ] 1.2 Add `github.com/btcsuite/btcd/btcutil/hdkeychain` (or `github.com/cosmos/btcutil`) for BIP44 HD key derivation
 - [ ] ~~1.3~~ ~~Extend `Config` struct with `MetadataKVMount` field~~ — **removed**: metadata is plugin-native (D9), no KV mount needed
 - [ ] 1.4 Update `.env.example` to remove `KMS_METADATA_KV_MOUNT`; note Vault 1.17+ plugin requirement
 - [ ] 1.5 Update README: confirm minimum Vault version is 1.17 (plugin SDK requirement), document new Vault policy path (`kms/keys/+/import`)
@@ -66,9 +66,9 @@ Conflict-resolution rule if implementations interleave: typed-errors and `/v1/` 
 ## 7. REST Gateway — Cosmos Partial Sign Endpoint
 
 - [ ] 7.1 Register the handler at `/v1/sign/cosmos/partial` AND `/sign/cosmos/partial` via the dual-mount slice from `polish-api-correctness`.
-- [ ] 7.2 Implement handler — parse request, validate `signer_index` bounds and pubkey match, dispatch to Cosmos signer (which uses `sdk.SortJSON` per the `cosmos-signer` capability updated by `polish-api-correctness`), return `SignatureV2` + `pub_key` + `signer_index`.
+- [ ] 7.2 Implement handler — parse request, validate `signer_index` bounds and pubkey match, dispatch to Cosmos signer (which uses `cosmos-sdk/types.SortJSON` per the `cosmos-signer` capability updated by `polish-api-correctness`), return `SignatureV2` + `pub_key` + `signer_index`.
 - [ ] 7.3 Add `signer_index` validation: out-of-range → HTTP 400; gateway pubkey ≠ multisig_pubkeys[signer_index] → HTTP 400.
-- [ ] 7.4 Write handler unit tests: success DIRECT, success AMINO (with sdk.SortJSON canonicalisation), AMINO with duplicate keys → 400, index mismatch, pubkey mismatch, invalid sign_doc, missing fields.
+- [ ] 7.4 Write handler unit tests: success DIRECT, success AMINO (with `cosmos-sdk/types.SortJSON` canonicalisation), AMINO with duplicate keys → 400, index mismatch, pubkey mismatch, invalid sign_doc, missing fields.
 
 ## 8. REST Gateway — EVM Safe Sign Endpoint
 

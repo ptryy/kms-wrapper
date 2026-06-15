@@ -6,7 +6,7 @@
 
 ## 2. Canonical AMINO JSON via cosmos-sdk
 
-- [ ] 2.1 Import cosmos-sdk's `SortJSON` (path: `github.com/cosmos/cosmos-sdk/types`, function `types.SortJSON`). Confirm it is in the existing module graph; if not, add it (the project already vendors cosmos-sdk per `go.mod:27`).
+- [ ] 2.1 Import cosmos-sdk's `SortJSON` (path: `github.com/cosmos/cosmos-sdk/types`, function `types.SortJSON`). Confirm it is in the existing module graph; if not, add it (`github.com/cosmos/cosmos-sdk` is already listed as a direct module dependency in `go.mod`'s top-level `require` block — this repo uses Go modules, no `vendor/` directory).
 - [ ] 2.2 In `internal/signer/cosmos/cosmos.go:SignAmino`, replace the `json.Decode(UseNumber)` → `json.Marshal` block with: `sorted, err := types.SortJSON(rawSignDocBytes)` and use `sorted` as the SHA-256 input. Remove the now-unused helpers if any.
 - [ ] 2.3 Add a duplicate-key detector: scan the input bytes with a small recursive function (or vendor `github.com/tidwall/gjson` and walk `gjson.ParseBytes(...).ForEach(...)`); on duplicate detection at any nesting level, return `fmt.Errorf("duplicate key in amino sign doc: %s", key)` before canonicalisation.
 - [ ] 2.4 Test: `cosmos_test.go` adds a fixture `TestSignAminoCanonicalMatchesCosmosSDK` that signs the same input via this function AND via a direct call to `types.SortJSON` + SHA-256 + Vault; assert the two signatures verify against the same pubkey. Add `TestSignAminoRejectsDuplicateKeys`.

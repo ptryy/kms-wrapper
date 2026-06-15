@@ -21,7 +21,7 @@
 - [ ] 3.1 Add `github.com/google/uuid` to `go.mod` if not already present.
 - [ ] 3.2 New file `internal/gateway/requestid.go` with: a context key type `type requestIDKey struct{}`, a `RequestIDFromContext(ctx) string` helper, and a `requestID` middleware that reads `X-Request-ID`, validates against `^[A-Za-z0-9._-]{1,128}$`, generates UUIDv4 on absence/invalid, sets the response header, and stores in context.
 - [ ] 3.3 Add a `slog.Handler` wrapper (or use `slog.NewTextHandler`'s `ReplaceAttr`) that reads the context's request ID and emits `request_id=<id>` on every `slog.*Context` call.
-- [ ] 3.4 Mount the `requestID` middleware second in the chain (after panic-recovery so the ID is in context before any panic; see task 4).
+- [ ] 3.4 Mount the `requestID` middleware as the **outermost** layer in the chain so the request context carries the ID before any panic can be recovered by `recoverPanic` (see task 4.2). Chain order: `requestID(recoverPanic(...))`.
 - [ ] 3.5 Tests: `TestRequestIDPreservesInbound`, `TestRequestIDGeneratesOnMissing`, `TestRequestIDReplacesMalformed`, `TestRequestIDInLogs` (capture slog output to a buffer, assert the ID appears).
 
 ## 4. Panic-recovery middleware
@@ -31,7 +31,7 @@
   - In the recover branch: `slog.ErrorContext(ctx, "panic in handler", "panic", fmt.Sprint(rec), "stack", string(debug.Stack()), "matched_path", matchedPath)`
   - Increment `kmsPanicsTotal.WithLabelValues(matchedPath).Inc()`.
   - Write HTTP 500 with body `{"error": "internal server error", "request_id": "<id>"}`.
-- [ ] 4.2 Mount as the outermost middleware in the chain.
+- [ ] 4.2 Mount `recoverPanic` **immediately inside** the `requestID` middleware (not outermost). This ensures the recovered request still has the request ID available in its context for inclusion in the 500 response body and the panic log line. Chain order: `requestID(recoverPanic(rest of chain))`.
 - [ ] 4.3 Test: `TestPanicRecovery` — register a route that panics; assert response is 500 with the expected body, assert no process crash, assert log line emitted, assert `kms_panics_total` incremented.
 
 ## 5. Rate-limit observability
@@ -44,7 +44,7 @@
 ## 6. Lower `go.mod` toolchain floor
 
 - [ ] 6.1 Run `go mod why -m all` and `go mod graph | head -50` to find the highest-required Go floor from any transitive dep.
-- [ ] 6.2 Change `go 1.25.9` in `go.mod` to that floor (likely `go 1.23`). Add a `toolchain go1.23.x` directive pinning a specific patch.
+- [ ] 6.2 Change `go 1.25.9` in `go.mod` to that floor (likely `go 1.23`). Add a `toolchain` directive pinning a specific patch — e.g. `toolchain go1.23.6` (the directive requires a concrete patch version; wildcards like `go1.23.x` are invalid `go.mod` syntax).
 - [ ] 6.3 Verify `go build ./...` and `go test ./...` pass against the new floor (use `gotip` or a local 1.23 install).
 - [ ] 6.4 Update `.github/workflows/ci.yml` `actions/setup-go` `go-version` field to read from `go.mod` (`go-version-file: go.mod`).
 - [ ] 6.5 Update `testing-guide.md` and `README.md` Go-version statements to match the new floor.

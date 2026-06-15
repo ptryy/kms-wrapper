@@ -67,7 +67,7 @@ The `path` label uses the matched route pattern (e.g. `/v1/sign/evm`), not the r
 **Decision:** New middleware `recoverPanic(next http.Handler) http.Handler`:
 - `defer func() { if r := recover(); r != nil { ... } }()`
 - On panic: `slog.ErrorContext(ctx, "panic in handler", "panic", r, "stack", string(debug.Stack()))`. Write HTTP 500 with body `{"error": "internal server error", "request_id": "<id>"}`. Increment `kms_panics_total` counter.
-- Outermost middleware so it wraps every other layer (including auth and request-ID — but request-ID assignment runs first so the ID is in context before any panic can happen).
+- Mounted **immediately inside** the `requestID` middleware (i.e. `requestID(recoverPanic(...))`) so the request context already carries the request ID when a panic is recovered. The chain order is: `requestID` (outermost) → `recoverPanic` → other middleware → handler.
 
 **Rationale:** A single handler panic should not take down the entire process. The request ID in the error body lets the caller report the failure.
 
@@ -82,7 +82,7 @@ The `path` label uses the matched route pattern (e.g. `/v1/sign/evm`), not the r
 
 ### D7 — Lower `go.mod` toolchain floor
 
-**Decision:** Run `go mod why -m all | head -50` to find the highest-floor transitive dep. If it requires `1.23` (cosmos-sdk does, last checked), set `go 1.23` in `go.mod`. Add a `toolchain go1.23.x` directive (latest patch) to pin a consistent floor without forcing 1.25.
+**Decision:** Run `go mod why -m all | head -50` to find the highest-floor transitive dep. If it requires `1.23` (cosmos-sdk does, last checked), set `go 1.23` in `go.mod`. Add a `toolchain` directive pinning a concrete patch version (e.g. `toolchain go1.23.6` — the latest 1.23.x patch at merge time) to pin a consistent floor without forcing 1.25. `go.mod`'s `toolchain` directive requires a concrete patch number; wildcards are not valid syntax.
 
 **Rationale:** Today's `1.25.9` excludes contributors and CI images on `1.22`/`1.23` for no benefit. Going to whatever cosmos-sdk needs is the correct floor.
 

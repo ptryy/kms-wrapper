@@ -126,7 +126,7 @@ When `gateway.swagger_enabled=true` and the listener starts successfully, the ga
 ---
 
 ### Requirement: Cross-change integration — probe endpoints bypass auth middleware
-These scenarios verify the combined behaviour of `harden-gateway-security` (auth middleware) and this change (probe endpoints). Both changes must be applied for these scenarios to be testable.
+The gateway SHALL exempt `/livez`, `/readyz`, `/health`, and `/metrics` from the bearer-token authentication middleware introduced by `harden-gateway-security`. The auth middleware MUST NOT intercept requests to these probe and observability endpoints regardless of whether an `Authorization` header is present. These scenarios verify the combined behaviour of `harden-gateway-security` (auth middleware) and this change (probe endpoints); both changes must be applied for these scenarios to be testable.
 
 #### Scenario: /livez is reachable without a token
 - **WHEN** `harden-gateway-security` auth middleware is active AND a client sends `GET /livez` with no `Authorization` header

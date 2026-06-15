@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Connect to Vault via token auth
-The system SHALL authenticate to HashiCorp Vault using a token supplied via the `VAULT_TOKEN` environment variable or `vault.token` config field. The client SHALL validate connectivity on startup by calling the Vault health endpoint. The system SHALL refuse to start when the supplied token is empty, equal to `root`, or matches a known-weak placeholder (`dev`, `dev-token`, `change-me`), unless the environment variable `KMS_DEV` is set to `true`.
+The system SHALL authenticate to HashiCorp Vault using a token supplied via the `VAULT_TOKEN` environment variable or `vault.token` config field. The client SHALL validate connectivity on startup by calling the Vault health endpoint. The system SHALL refuse to start unconditionally (no `KMS_DEV` bypass) when the supplied token is empty. The system SHALL also refuse to start when the supplied token is equal to `root` or matches a known-weak placeholder (`dev`, `dev-token`, `change-me`), unless the environment variable `KMS_DEV` is set to `true`.
 
 #### Scenario: Successful connection
 - **WHEN** `VAULT_TOKEN` is set to a non-root, non-placeholder value and Vault is reachable at the configured address

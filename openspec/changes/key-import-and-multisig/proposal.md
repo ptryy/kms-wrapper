@@ -7,7 +7,7 @@ The current KMS gateway only supports keys generated inside Vault — operators 
 This change depends on two upstream changes from the deep-review proposals batch:
 
 - `harden-vault-backend` — establishes the typed Vault error pattern (`*vaultapi.ResponseError.StatusCode` via `errors.As`), the scoped Vault policy install in `vault/init.sh`, and the plugin-side key-path validator that the new `/keys/import` write path inherits. Specifically, the "key already exists" 409 mapping defined here uses the typed-error machinery from that change, not substring matching.
-- `polish-api-correctness` — establishes the `/v1/` route prefix and route dual-mount pattern, the EVM oneOf discriminator, and the AMINO canonicalisation via `sdk.SortJSON`. All new routes proposed here are specified under `/v1/` and inherit the dual-mount machinery (bare-path aliases get `Deprecation`/`Sunset` headers).
+- `polish-api-correctness` — establishes the `/v1/` route prefix and route dual-mount pattern, the EVM oneOf discriminator, and the AMINO canonicalisation via `cosmos-sdk/types.SortJSON`. All new routes proposed here are specified under `/v1/` and inherit the dual-mount machinery (bare-path aliases get `Deprecation`/`Sunset` headers).
 
 Implementation of this change SHALL NOT begin until both upstream changes are merged. If timelines force interleaving, the conflict-resolution rule is: typed errors and `/v1/` paths win; this change is updated to follow.
 
@@ -37,7 +37,7 @@ Implementation of this change SHALL NOT begin until both upstream changes are me
 
 ## Impact
 
-- **Dependencies added**: `github.com/tyler-smith/go-bip39` (mnemonic entropy), `github.com/btcsuite/btcutil/hdkeychain` or `github.com/cosmos/btcutil` (BIP44 derivation).
+- **Dependencies added**: `github.com/tyler-smith/go-bip39` (mnemonic entropy), `github.com/btcsuite/btcd/btcutil/hdkeychain` or `github.com/cosmos/btcutil` (BIP44 derivation).
 - **Vault version requirement**: Vault 1.17+ (plugin SDK). No bump beyond the existing requirement from `multi-chain-kms-gateway`.
 - **New Vault policy capabilities required**: `create` on `kms/keys/+/import`. The scoped policy installed by `harden-vault-backend`'s `vault/init.sh` SHALL be extended with this capability for import-capable tokens. (No `transit/*` paths are involved — the original Transit-wrapping design is superseded by D7.)
 - **No breaking changes** to existing endpoints or CLI subcommands.
