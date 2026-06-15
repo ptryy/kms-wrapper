@@ -1,7 +1,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Sign EVM transaction endpoint
-The gateway SHALL expose `POST /sign/evm` (and equivalently `POST /v1/sign/evm`) accepting a JSON body with `key_path`, `chain_id`, an explicit `type` discriminator field whose value is one of `raw_tx`, `personal_message`, `eip712_digest`, and the payload field matching the discriminator: `raw_tx` (hex RLP), `personal_message` (hex bytes), or `eip712_digest` (hex 32 bytes). The handler SHALL dispatch on `type`; payload fields not matching the discriminator SHALL be ignored. The response SHALL be one of two typed shapes based on the request variant:
+The gateway SHALL expose `POST /sign/evm` (and equivalently `POST /v1/sign/evm`) accepting a JSON body with `key_path`, an explicit `type` discriminator field whose value is one of `raw_tx`, `personal_message`, `eip712_digest`, and the payload field matching the discriminator: `raw_tx` (hex RLP), `personal_message` (hex bytes), or `eip712_digest` (hex 32 bytes). `chain_id` SHALL be required when `type=raw_tx` (used to scope the secp256k1 signature to a specific EVM chain) and SHALL be optional/ignored for `personal_message` and `eip712_digest` (which do not bind to a chain at the signature layer). The handler SHALL dispatch on `type`; payload fields not matching the discriminator SHALL be ignored. The response SHALL be one of two typed shapes based on the request variant:
 - `raw_tx` → `{"signed_tx": "0x...", "signature_parts": {"r": "...", "s": "...", "v": N}}` — the `signature_parts` field IS the structured signature; there SHALL NOT be a free-form `signature` field of type `any`.
 - `personal_message` or `eip712_digest` → `{"signature": "0x<65-byte-hex>"}` — `signature` is a typed string.
 

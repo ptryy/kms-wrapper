@@ -1,6 +1,6 @@
 ## 1. Fix CLI Cosmos sign error shadowing
 
-- [ ] 1.1 In `cmd/kms-wrapper/root.go` around the `kms-wrapper sign cosmos` command (the `switch sign_mode { case "DIRECT": ... }` block near line 225-236), declare `var err error` BEFORE the switch. Inside `case "DIRECT":`, rename the base64-decode local to `decErr` (e.g. `doc, decErr := base64.StdEncoding.DecodeString(signDoc)`); on `decErr != nil`, assign `err = fmt.Errorf("decode sign-doc: %w", decErr)` and break out of the switch. `SignDirect`/`SignAmino` then write into the outer `err`.
+- [ ] 1.1 In `cmd/kms-wrapper/root.go` around the `signCosmosCmd` `RunE` body (the `switch mode { case "DIRECT": ... }` block near line 223-234), declare `var err error` BEFORE the switch (or reuse the func-scoped `err` from `st.client`, but make the scoping explicit). Inside `case "DIRECT":`, rename the base64-decode local to `decErr` (e.g. `doc, decErr := base64.StdEncoding.DecodeString(signDoc)`); on `decErr != nil`, assign `err = fmt.Errorf("decode sign-doc: %w", decErr)` and break out of the switch. The `SignDirect`/`SignAmino` assignment SHALL use `=` (not `:=`) so it writes into the outer `err` — today the case-scoped `:=` on the decode line shadows `err`, so the `sig, pub, err = signer.SignDirect(...)` line writes to the shadowed copy and the post-switch check misses signer errors. Add a regression test that exercises the shadow path (failing signer → empty stdout, non-zero exit) so the bug cannot return.
 - [ ] 1.2 After the switch, on `err != nil`, return `fmt.Errorf("sign cosmos: %w", err)` and ensure no `Println` of `sig`/`pub` happens on the error path. Confirm Cobra surfaces the returned error to stderr and non-zero exit.
 - [ ] 1.3 Add `cmd/kms-wrapper/sign_cosmos_test.go` (or extend existing) with a fake `Signer` that returns an error; assert non-zero exit and that stdout is empty.
 
@@ -46,8 +46,8 @@
 
 ## 7. `Allow` header on 405
 
-- [ ] 7.1 In `internal/gateway/gateway.go:methodNotAllowedRewriter.WriteHeader`, before clearing `Content-Length`: capture `m.inner.Header().Get("Allow")` into a local; after clearing `Content-Length`, re-set `m.inner.Header().Set("Allow", capturedAllow)` (the rewrite of the body to JSON does not touch the headers map directly — confirm).
-- [ ] 7.2 Test: `TestMethodNotAllowedIncludesAllowHeader` — send `DELETE /keys`; assert response has `Allow:` header containing `GET` and `POST`.
+- [ ] 7.1 Audit `internal/gateway/gateway.go:methodNotAllowedRewriter.WriteHeader` (currently uses `w.ResponseWriter` and deletes only `Content-Length`, NOT `Allow`). Confirm via the regression test in 7.2 that `Allow` survives the 405 rewrite end-to-end. If the test fails, capture `w.ResponseWriter.Header().Get("Allow")` into a local before any header mutation and re-set it after `WriteHeader`; if it passes, no production code change is required — the task collapses to "lock in current behaviour with a test."
+- [ ] 7.2 Test: `TestMethodNotAllowedIncludesAllowHeader` — register handlers for `GET` and `POST` on `/keys`, send `DELETE /keys` against the full gateway chain, assert response is HTTP 405 with `Content-Type: application/json`, body `{"error":"method not allowed"}`, AND `Allow:` header containing `GET` and `POST`.
 
 ## 8. 201 on first `POST /keys`
 
