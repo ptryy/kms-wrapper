@@ -1,18 +1,19 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
+# Project Instructions
 
-These instructions are for AI assistants working in this project.
+This project uses the **Superpowers** workflow (migrated from OpenSpec on 2026-06-17).
 
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
+## Authoritative docs
 
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
+- **Project Vision / constitution:** [`/CONSTITUTION.md`](./CONSTITUTION.md) — purpose, tech stack,
+  architecture principles, conventions, constraints. Read this first.
+- **Current system behavioral contract:** [`docs/specs/`](./docs/specs/) — WHEN/THEN acceptance
+  scenarios for what the system does today.
+- **In-flight feature designs:** [`docs/superpowers/specs/`](./docs/superpowers/specs/).
+- **Implementation plans:** [`docs/superpowers/plans/`](./docs/superpowers/plans/).
+- **Historical (implemented) changes:** [`docs/archive/`](./docs/archive/).
 
-Keep this managed block so 'openspec update' can refresh the instructions.
+## Workflow
 
-<!-- OPENSPEC:END -->
+For new features, breaking changes, or architecture/security work, use the Superpowers skills:
+`brainstorming` → `writing-plans` → `subagent-driven-development` / `executing-plans`. New designs
+go to `docs/superpowers/specs/`, plans to `docs/superpowers/plans/`, governed by `/CONSTITUTION.md`.

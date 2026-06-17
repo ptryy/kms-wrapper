@@ -8,7 +8,7 @@
 - The community `vault-ethereum` plugin keccak256-hashes inputs internally — incompatible with Cosmos SDK's SHA-256 signing — and does not expose raw compressed pubkeys.
 - `kms-vault-plugin` is purpose-built: it signs **pre-hashed 32-byte inputs** with no internal hashing, so the gateway computes the chain-appropriate digest (keccak256 for EVM, SHA-256 for Cosmos) before calling the plugin.
 
-See `openspec/changes/multi-chain-kms-gateway/design.md` for the full rationale.
+See `docs/archive/2026-05-30-multi-chain-kms-gateway/design.md` for the full rationale. (This project migrated from OpenSpec to the Superpowers workflow on 2026-06-17 — see `/CONSTITUTION.md`.)
 
 ## Prerequisites
 
