@@ -13,6 +13,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "key_path": {
+                        "example": "proj-a/prod/alice",
                         "type": "string"
                     },
                     "sign_doc": {
