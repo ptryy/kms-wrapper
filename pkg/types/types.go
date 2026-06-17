@@ -20,18 +20,18 @@ type EVMSignRequest struct {
 }
 
 type EVMSignRawTxRequest struct {
-	KeyPath string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	ChainID int64  `json:"chain_id" binding:"required" minimum:"1" example:"1"`
 	RawTx   string `json:"raw_tx" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
 }
 
 type EVMSignPersonalMessageRequest struct {
-	KeyPath         string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath         string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	PersonalMessage string `json:"personal_message" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
 }
 
 type EVMSignEIP712Request struct {
-	KeyPath      string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath      string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	EIP712Digest string `json:"eip712_digest" binding:"required" pattern:"^(0x)?[0-9a-fA-F]{64}$"`
 }
 
@@ -86,7 +86,7 @@ type KeyInfo struct {
 }
 
 type KeyCreateRequest struct {
-	Path string `json:"path" binding:"required" example:"proj-a/evm/alice"`
+	Path string `json:"path" binding:"required" example:"proj-a/prod/alice"`
 }
 
 type KeyCreateResponse struct {

@@ -731,7 +731,7 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 // @Summary Show a Vault Transit key
 // @Tags keys
 // @Produce json
-// @Param path query string true "Key path (format: {project}/{chain}/{username})" example(proj-a/evm/alice)
+// @Param path query string true "Key path (format: {project}/{environment}/{username})" example(proj-a/prod/alice)
 // @Success 200 {object} apptypes.KeyInfo
 // @Failure 400 {object} apptypes.ErrorResponse
 // @Failure 401 {object} apptypes.ErrorResponse
