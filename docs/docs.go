@@ -41,7 +41,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "key_path": {
-                        "example": "proj-a/evm/alice",
+                        "example": "proj-a/prod/alice",
                         "type": "string"
                     }
                 },
@@ -54,7 +54,7 @@ const docTemplate = `{
             "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignPersonalMessageRequest": {
                 "properties": {
                     "key_path": {
-                        "example": "proj-a/evm/alice",
+                        "example": "proj-a/prod/alice",
                         "type": "string"
                     },
                     "personal_message": {
@@ -76,7 +76,7 @@ const docTemplate = `{
                         "type": "integer"
                     },
                     "key_path": {
-                        "example": "proj-a/evm/alice",
+                        "example": "proj-a/prod/alice",
                         "type": "string"
                     },
                     "raw_tx": {
@@ -106,7 +106,7 @@ const docTemplate = `{
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest": {
                 "properties": {
                     "path": {
-                        "example": "proj-a/evm/alice",
+                        "example": "proj-a/prod/alice",
                         "type": "string"
                     }
                 },
@@ -161,14 +161,17 @@ const docTemplate = `{
                     },
                     "keys": {
                         "example": [
-                            "evm/alice",
-                            "cosmos/bob"
+                            "prod/alice",
+                            "staging/bob"
                         ],
                         "items": {
                             "type": "string"
                         },
                         "type": "array",
                         "uniqueItems": false
+                    },
+                    "next_cursor": {
+                        "type": "string"
                     }
                 },
                 "type": "object"
@@ -181,7 +184,9 @@ const docTemplate = `{
                     "pub_key": {
                         "type": "string"
                     },
-                    "signature": {},
+                    "signature": {
+                        "type": "string"
+                    },
                     "signature_parts": {
                         "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignatureParts"
                     },
@@ -225,7 +230,7 @@ const docTemplate = `{
     },
     "openapi": "3.0.3",
     "paths": {
-        "/health": {
+        "/v1/health": {
             "get": {
                 "responses": {
                     "200": {
@@ -256,13 +261,13 @@ const docTemplate = `{
                     }
                 },
                 "security": [],
-                "summary": "Gateway health status",
+                "summary": "Gateway health status (alias of /readyz; deprecated)",
                 "tags": [
                     "health"
                 ]
             }
         },
-        "/keys": {
+        "/v1/keys": {
             "get": {
                 "parameters": [
                     {
@@ -332,7 +337,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "List Vault Transit keys by prefix",
+                "summary": "List KMS keys by prefix",
                 "tags": [
                     "keys"
                 ]
@@ -418,18 +423,18 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Create a Vault Transit key",
+                "summary": "Create a KMS key",
                 "tags": [
                     "keys"
                 ]
             }
         },
-        "/keys/info": {
+        "/v1/keys/info": {
             "get": {
                 "parameters": [
                     {
-                        "description": "Key path (format: {project}/{chain}/{username})",
-                        "example": "proj-a/evm/alice",
+                        "description": "Key path (format: {project}/{environment}/{username})",
+                        "example": "proj-a/prod/alice",
                         "in": "query",
                         "name": "path",
                         "required": true,
@@ -515,13 +520,13 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "summary": "Show a Vault Transit key",
+                "summary": "Show a KMS key",
                 "tags": [
                     "keys"
                 ]
             }
         },
-        "/sign/cosmos": {
+        "/v1/sign/cosmos": {
             "post": {
                 "requestBody": {
                     "content": {
@@ -599,12 +604,20 @@ const docTemplate = `{
                 ]
             }
         },
-        "/sign/evm": {
+        "/v1/sign/evm": {
             "post": {
                 "requestBody": {
                     "content": {
                         "application/json": {
                             "schema": {
+                                "discriminator": {
+                                    "mapping": {
+                                        "eip712_digest": "#/components/schemas/types.EVMSignEIP712Request",
+                                        "personal_message": "#/components/schemas/types.EVMSignPersonalMessageRequest",
+                                        "raw_tx": "#/components/schemas/types.EVMSignRawTxRequest"
+                                    },
+                                    "propertyName": "type"
+                                },
                                 "oneOf": [
                                     {
                                         "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignRawTxRequest",
