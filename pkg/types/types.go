@@ -36,7 +36,7 @@ type EVMSignEIP712Request struct {
 }
 
 type CosmosSignRequest struct {
-	KeyPath  string `json:"key_path" binding:"required"`
+	KeyPath  string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	HRP      string `json:"hrp,omitempty"`
 	SignMode string `json:"sign_mode" binding:"required" enums:"DIRECT,AMINO_JSON"`
 	// SignDoc is base64 protobuf bytes when sign_mode=DIRECT and raw JSON when sign_mode=AMINO_JSON.
