@@ -5,15 +5,15 @@ The Vault secrets plugin SHALL persist a `chains` capability tag on every manage
 At create time, the plugin SHALL require the caller to supply `chains`. Missing, empty, or unrecognized values SHALL be rejected with `logical.ErrInvalidRequest` (HTTP 400) and the message `"chains is required and must be a non-empty subset of [evm, cosmos]"`. Idempotent re-create with a different `chains` value SHALL be rejected with the message `"chains mismatch on idempotent create"`; the existing tag SHALL NOT be overwritten by a create call.
 
 #### Scenario: Create persists canonicalized chains
-- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice create chains=cosmos,EVM,cosmos`
+- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice chains=cosmos,EVM,cosmos`
 - **THEN** the plugin creates the key with `KeyEntry.Chains = ["cosmos", "evm"]` (lowercased, deduped, sorted)
 
 #### Scenario: Create with empty chains is rejected
-- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice create chains=`
+- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice chains=`
 - **THEN** the plugin returns HTTP 400 with `"chains is required and must be a non-empty subset of [evm, cosmos]"` and the key is NOT created
 
 #### Scenario: Create with unknown chain is rejected
-- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice create chains=evm,solana`
+- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice chains=evm,solana`
 - **THEN** the plugin returns HTTP 400 with `"chains is required and must be a non-empty subset of [evm, cosmos]"` and the key is NOT created
 
 #### Scenario: Idempotent re-create preserves existing chains

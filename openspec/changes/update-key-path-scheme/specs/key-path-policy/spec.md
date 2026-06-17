@@ -1,10 +1,10 @@
 ## MODIFIED Requirements
 ### Requirement: Key path format validation
-The system SHALL validate key paths against the pattern `{project}/{environment}/{username}` where each segment is a non-empty string containing only `[a-z0-9_-]` characters. The full path used in Vault Transit API calls SHALL be prefixed with `transit/keys/`. The `{environment}` segment is free-form (e.g. `prod`, `staging`, `dev`, or any project-defined label); the validator does NOT maintain a reserved list and does NOT emit warnings for unknown values.
+The system SHALL validate key paths against the pattern `{project}/{environment}/{username}` where each segment is a non-empty string containing only `[a-z0-9_-]` characters. The full path used against the `kms-vault-plugin` secrets engine SHALL be prefixed with `kms/keys/`. The `{environment}` segment is free-form (e.g. `prod`, `staging`, `dev`, or any project-defined label); the validator does NOT maintain a reserved list and does NOT emit warnings for unknown values.
 
 #### Scenario: Valid key path
 - **WHEN** the key path `"proj-a/prod/alice"` is validated
-- **THEN** validation passes and the Vault Transit path is `transit/keys/proj-a/prod/alice`
+- **THEN** validation passes and the plugin path is `kms/keys/proj-a/prod/alice`
 
 #### Scenario: Invalid characters in segment
 - **WHEN** the key path contains uppercase letters, spaces, or special characters (e.g. `"Proj A/Prod/Alice"`)
@@ -19,7 +19,7 @@ The system SHALL validate key paths against the pattern `{project}/{environment}
 - **THEN** validation returns an error: "key path segments must not be empty"
 
 ### Requirement: Key path uniqueness per identity
-Each combination of `{project}/{environment}/{username}` SHALL map to exactly one Vault Transit key. The system SHALL not allow creating a second key at an existing path (enforced by idempotent creation semantics from the Vault backend).
+Each combination of `{project}/{environment}/{username}` SHALL map to exactly one plugin-managed `KeyEntry`. The system SHALL not allow creating a second key at an existing path (enforced by idempotent creation semantics in the `kms-vault-plugin` create handler).
 
 #### Scenario: Idempotent creation preserves key
 - **WHEN** `keys create` is called twice with the same path
@@ -29,15 +29,15 @@ Each combination of `{project}/{environment}/{username}` SHALL map to exactly on
 The Vault secrets plugin SHALL validate the `{project}/{environment}/{username}` key-name format at every write path (`create`, `import`, and any future `replace`) and at every list path. Validation SHALL use the same regex used by the REST gateway and CLI. Names that do not match SHALL be rejected with `logical.ErrInvalidRequest` (HTTP 400). The plugin SHALL NOT assume that the caller (gateway, CLI, or another Vault client) has pre-validated the input.
 
 #### Scenario: Plugin rejects invalid name on create
-- **WHEN** a Vault client calls `vault write kms/keys/Bad-Name create` (uppercase, fewer than 3 segments)
+- **WHEN** a Vault client calls `vault write -force kms/keys/Bad-Name` (uppercase, fewer than 3 segments)
 - **THEN** the plugin returns HTTP 400 with an error containing the validator's message ("key path segments must match [a-z0-9_-]" or "must have format {project}/{environment}/{username}")
 
 #### Scenario: Plugin rejects path traversal segments
-- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/../alice create`
+- **WHEN** a Vault client calls `vault write -force kms/keys/proj-a/prod/../alice`
 - **THEN** the plugin returns HTTP 400 and the key is NOT created
 
 #### Scenario: Plugin accepts valid name
-- **WHEN** a Vault client calls `vault write kms/keys/proj-a/prod/alice create`
+- **WHEN** a Vault client calls `vault write -force kms/keys/proj-a/prod/alice`
 - **THEN** the plugin creates the key (subject to Vault policy and existing idempotency rules) and returns HTTP 200
 
 #### Scenario: List validates prefix
@@ -56,8 +56,8 @@ The local-dev bootstrap (`vault/init.sh`) SHALL install `policy-project.hcl` via
 - **THEN** `.env` contains `KMS_VAULT_TOKEN=<non-root-token>` and the value is NOT the literal string `root`
 
 #### Scenario: Policy globs match the plugin mount
-- **WHEN** a token bound to the project policy attempts `vault write kms/keys/proj-a/prod/alice create`
-- **THEN** the write succeeds, and the same token attempting `vault write kms/keys/proj-b/prod/alice create` fails with HTTP 403
+- **WHEN** a token bound to the project policy attempts `vault write -force kms/keys/proj-a/prod/alice`
+- **THEN** the write succeeds, and the same token attempting `vault write -force kms/keys/proj-b/prod/alice` fails with HTTP 403
 
 ## REMOVED Requirements
 ### Requirement: Chain identifier conventions

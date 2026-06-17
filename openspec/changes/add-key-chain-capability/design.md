@@ -71,7 +71,7 @@ Same pattern as the existing key-path-format enforcement (key-path-policy spec: 
 1. Land `update-key-path-scheme` first. This proposal assumes the new `{project}/{environment}/{username}` shape and updates examples accordingly.
 2. Land this change. Operators and any consuming services must update create calls to include `chains`.
 3. There is no in-place migration for existing keys. The project is pre-production; local dev rebuilds via `make scrub-env && make dev-down && make dev-up`. Any keys an operator wants to preserve are recreated at the same path with explicit `chains`.
-4. Rollback plan: revert the PR. Existing keys created before the revert lose their `chains` metadata (it is dropped on next plugin restart with the older binary), but the secp256k1 key material is preserved.
+4. Rollback plan: revert the PR. `KeyEntry` is stored as JSON, so an older binary will silently ignore the unknown `chains` field on read — the field is NOT auto-deleted on restart. It only disappears for an entry that the older binary rewrites (e.g. via `update-chains` or any future write path that re-marshals the struct); entries that are merely read keep their `chains` JSON bytes intact in storage. The secp256k1 key material is preserved either way.
 
 ## Open Questions
 - Should `chains` be exposed in metrics labels (e.g. `kms_signing_duration_seconds{chain,allowed}` where `allowed` is `true|false`)? Out of scope here; can be a follow-up if 403-on-mismatch volume becomes interesting.

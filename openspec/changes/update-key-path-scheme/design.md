@@ -33,7 +33,7 @@ The historical `{project}/{chain}/{username}` convention dates back to early des
 ## Migration Plan
 1. Land code, spec, and doc changes together (single PR).
 2. Local dev: developers run `make scrub-env && make dev-down && make dev-up`. The bootstrap script regenerates a fresh Vault dev container; previously created keys are dropped.
-3. Vault policies: anyone with a custom `policy-project.hcl` updates `transit/keys/<project>/<env>/*` and `transit/sign/<project>/<env>/*` globs (only the label changes; the glob structure is unchanged).
+3. Vault policies: anyone with a custom `policy-project.hcl` updates `kms/keys/<project>/<env>/*` and `kms/sign/<project>/<env>/*` globs (only the label changes; the glob structure is unchanged).
 4. Client code: anyone calling `/keys`, `/keys/info`, `/sign/evm`, `/sign/cosmos`, or the CLI `keys create` updates the `key_path` argument to the new shape.
 5. No data migration tooling is provided. Old keys remain in Vault until manually deleted; they are simply unreachable from the gateway.
 

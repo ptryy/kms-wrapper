@@ -2,7 +2,7 @@
 - [ ] 1.1 In `cmd/swagger-postprocess/main.go`, add a function `renameSchemaPrefix(spec, oldPrefix, newPrefix)` that walks `spec["components"]["schemas"]` and replaces top-level keys.
 - [ ] 1.2 Extend the same function to walk every `$ref` value (including inside `oneOf`, `allOf`, `anyOf`, `discriminator.mapping`, request bodies, response schemas, and nested property schemas) and rewrite `#/components/schemas/<oldPrefix>` → `#/components/schemas/<newPrefix>`.
 - [ ] 1.3 Call `renameSchemaPrefix(spec, "github_com_ryan-truong_kms-wrapper_pkg_types", "kms-wrapper_pkg_types")` from `normalizeSpec`, before `injectEVMDiscriminator`.
-- [ ] 1.4 Update `injectEVMDiscriminator` mapping values from `types.EVMSignRawTxRequest` etc. to `kms-wrapper_pkg_types.EVMSignRawTxRequest` etc., matching the renamed schema keys.
+- [ ] 1.4 Update `injectEVMDiscriminator` mapping values from `#/components/schemas/types.EVMSignRawTxRequest` etc. to `#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest` etc., matching the renamed schema keys (mapping values are `$ref` strings and MUST keep the `#/components/schemas/` prefix).
 
 ## 2. Tests
 - [ ] 2.1 Extend `cmd/swagger-postprocess/main_test.go` with a fixture that exercises a schema key under the old prefix and a `$ref` to it; assert both are rewritten to the new prefix after `normalizeSpec`.

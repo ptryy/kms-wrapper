@@ -16,11 +16,11 @@ The OpenAPI 3.0 document SHALL key every schema under `components.schemas` with 
 
 ## MODIFIED Requirements
 ### Requirement: Spec describes the EVM payload union with `oneOf`
-The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` between three payload variants (raw transaction, personal message, and EIP-712 digest). The `oneOf` SHALL include an explicit `discriminator` block keyed on a required string property `type` with `mapping` entries for `raw_tx`, `personal_message`, and `eip712_digest`. The `mapping` values SHALL reference schemas under the short prefix `#/components/schemas/kms-wrapper_pkg_types.` and SHALL resolve to existing schema keys.
+The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` between three payload variants (raw transaction, personal message, and EIP-712 digest), modeled inline at `paths./sign/evm.post.requestBody.content."application/json".schema`. The `oneOf` SHALL include an explicit `discriminator` block keyed on a required string property `type` with `mapping` entries for `raw_tx`, `personal_message`, and `eip712_digest`. The `mapping` values SHALL reference schemas under the short prefix `#/components/schemas/kms-wrapper_pkg_types.` and SHALL resolve to existing schema keys.
 
 #### Scenario: Raw-tx variant present
-- **WHEN** a client inspects the spec at `components.schemas.kms-wrapper_pkg_types.EVMSignRequest.oneOf`
-- **THEN** one variant has a `properties.raw_tx` field of type `string`
+- **WHEN** a client inspects the spec at `paths./sign/evm.post.requestBody.content."application/json".schema.oneOf`
+- **THEN** one variant `$ref`s `#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest`, whose `properties.raw_tx` field is of type `string`
 
 #### Scenario: EIP-712 digest length constraint
 - **WHEN** the EIP-712 digest variant schema is inspected
@@ -31,7 +31,7 @@ The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` betwee
 - **THEN** `properties.personal_message` is a `string` with `format: hex`
 
 #### Scenario: Discriminator drives codegen
-- **WHEN** a client inspects the EVM sign request schema
+- **WHEN** a client inspects the inline EVM sign request schema at `paths./sign/evm.post.requestBody.content."application/json".schema`
 - **THEN** the schema has `discriminator: { propertyName: "type", mapping: { raw_tx: "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest", personal_message: "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest", eip712_digest: "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request" } }` and every mapping value resolves to an existing schema key
 
 #### Scenario: Type field is required on every variant
