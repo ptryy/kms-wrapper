@@ -18,10 +18,10 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 		errSub string
 	}{
 		{"uppercase", "Proj-A/evm/alice", "segments must match"},
-		{"two-segments", "proj-a/evm", "format {project}/{chain}/{username}"},
+		{"two-segments", "proj-a/evm", "format {project}/{environment}/{username}"},
 		{"empty-segment", "proj-a//alice", "segments must not be empty"},
 		{"dotdot", "proj-a/evm/..", "segments must match"},
-		{"four-segments", "proj-a/evm/alice/extra", "format {project}/{chain}/{username}"},
+		{"four-segments", "proj-a/evm/alice/extra", "format {project}/{environment}/{username}"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

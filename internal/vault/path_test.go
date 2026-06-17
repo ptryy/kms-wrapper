@@ -16,7 +16,7 @@ func TestValidateKeyPath(t *testing.T) {
 	}
 	cases := map[string]string{
 		"Proj A/EVM/Alice": "key path segments must match [a-z0-9_-]",
-		"proj/evm":         "key path must have format {project}/{chain}/{username}",
+		"proj/evm":         "key path must have format {project}/{environment}/{username}",
 		"proj//alice":      "key path segments must not be empty",
 	}
 	for path, want := range cases {

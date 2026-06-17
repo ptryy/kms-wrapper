@@ -22,7 +22,7 @@ func TestSignValidatesPath(t *testing.T) {
 		errSub string
 	}{
 		{"uppercase", "Proj/evm/alice", "segments must match"},
-		{"two-segments", "proj/evm", "format {project}/{chain}/{username}"},
+		{"two-segments", "proj/evm", "format {project}/{environment}/{username}"},
 		{"empty-segment", "proj//alice", "segments must not be empty"},
 		{"dotdot", "proj/evm/..", "segments must match"},
 	}
