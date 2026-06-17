@@ -97,7 +97,7 @@ The gateway exposes the same key lifecycle as `kms-wrapper keys`. All three requ
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST   | `/keys` | Create a secp256k1 Transit key. Idempotent — re-create returns the existing key with `already_existed: true`. |
+| POST   | `/keys` | Create a secp256k1 KMS key. Idempotent — re-create returns the existing key with `already_existed: true`. |
 | GET    | `/keys/info?path=<key-path>` | Show public key (hex), EVM address, and Cosmos bech32 address. |
 | GET    | `/keys?prefix=<prefix>` | List bare key names under prefix; `prefix` optional. |
 

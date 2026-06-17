@@ -34,7 +34,7 @@ Core package flow:
 
 ## Repository conventions
 
-- Key paths are always `{project}/{chain}/{username}` with lowercase `[a-z0-9_-]` segments. Use `internal/keypath` as the shared validator across CLI, gateway, plugin, and Vault client code; list prefixes may be empty or leading path segments.
+- Key paths are always `{project}/{environment}/{username}` with lowercase `[a-z0-9_-]` segments. The `{environment}` segment is free-form (e.g. `prod`, `staging`, `dev`). Use `internal/keypath` as the shared validator across CLI, gateway, plugin, and Vault client code; list prefixes may be empty or leading path segments.
 - Plugin paths are `kms/keys/<path>` for key lifecycle and `kms/sign/<path>` for signing. The plugin must never return private key bytes in responses.
 - Signing inputs to the plugin must already be chain-appropriate 32-byte hashes. Do not add hashing inside `internal/plugin`; hashing belongs in the chain-specific signer packages.
 - Key creation is idempotent. Existing keys are returned without regenerating key material; the gateway returns `already_existed: true` and uses HTTP 200 for existing keys, HTTP 201 for newly created keys.
