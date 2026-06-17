@@ -95,7 +95,7 @@ type KeyCreateResponse struct {
 }
 
 type KeyListResponse struct {
-	Keys       []string `json:"keys" example:"evm/alice,cosmos/bob"`
+	Keys       []string `json:"keys" example:"prod/alice,staging/bob"`
 	Count      int      `json:"count" example:"2"`
 	NextCursor string   `json:"next_cursor"`
 }
