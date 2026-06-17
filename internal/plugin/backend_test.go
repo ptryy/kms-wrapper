@@ -41,7 +41,7 @@ func writeKey(t *testing.T, b *backend, storage logical.Storage, name string) *l
 func TestCreateReadDeleteRoundTrip(t *testing.T) {
 	b, storage := testBackend(t)
 	ctx := context.Background()
-	const name = "proj/evm/alice"
+	const name = "proj/prod/alice"
 
 	created := writeKey(t, b, storage, name)
 	if _, ok := created.Data["compressed_pub_key"].(string); !ok {
@@ -107,14 +107,14 @@ func TestCreateReadDeleteRoundTrip(t *testing.T) {
 func TestListKeys(t *testing.T) {
 	b, storage := testBackend(t)
 	ctx := context.Background()
-	for _, name := range []string{"proj-a/evm/alice", "proj-a/evm/bob", "proj-b/cosmos/carol"} {
+	for _, name := range []string{"proj-a/prod/alice", "proj-a/prod/bob", "proj-b/prod/carol"} {
 		writeKey(t, b, storage, name)
 	}
 
-	// List under "proj-a/evm/" -> alice, bob.
+	// List under "proj-a/prod/" -> alice, bob.
 	resp, err := b.HandleRequest(ctx, &logical.Request{
 		Operation: logical.ListOperation,
-		Path:      "keys/proj-a/evm/",
+		Path:      "keys/proj-a/prod/",
 		Storage:   storage,
 	})
 	if err != nil || resp == nil {
@@ -122,14 +122,14 @@ func TestListKeys(t *testing.T) {
 	}
 	got, _ := resp.Data["keys"].([]string)
 	if len(got) != 2 {
-		t.Fatalf("expected 2 keys under proj-a/evm/, got %v", got)
+		t.Fatalf("expected 2 keys under proj-a/prod/, got %v", got)
 	}
 }
 
 func TestSignRoundTrip(t *testing.T) {
 	b, storage := testBackend(t)
 	ctx := context.Background()
-	const name = "proj/evm/alice"
+	const name = "proj/prod/alice"
 	created := writeKey(t, b, storage, name)
 	compressedB64, _ := created.Data["compressed_pub_key"].(string)
 	compressed, err := base64.StdEncoding.DecodeString(compressedB64)
@@ -185,7 +185,7 @@ func TestSignRoundTrip(t *testing.T) {
 func TestSignRejectsBadInput(t *testing.T) {
 	b, storage := testBackend(t)
 	ctx := context.Background()
-	const name = "proj/evm/alice"
+	const name = "proj/prod/alice"
 	writeKey(t, b, storage, name)
 
 	cases := []struct {

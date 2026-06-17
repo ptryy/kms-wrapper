@@ -36,7 +36,7 @@ func newMockPlugin(t *testing.T) *mockPlugin {
 
 func TestClientMockPlugin(t *testing.T) {
 	mp := newMockPlugin(t)
-	const keyPath = "proj/evm/alice"
+	const keyPath = "proj/prod/alice"
 	const vaultKeyPath = "/v1/kms/keys/" + keyPath
 	const vaultSignPath = "/v1/kms/sign/" + keyPath
 
@@ -126,7 +126,7 @@ func TestClientMockPlugin(t *testing.T) {
 
 func TestSignRequiresHashLength(t *testing.T) {
 	c := &Client{}
-	if _, _, err := c.Sign(context.Background(), "proj/evm/alice", []byte{1}); err == nil || err.Error() != "payload must be 32 bytes (pre-hashed)" {
+	if _, _, err := c.Sign(context.Background(), "proj/prod/alice", []byte{1}); err == nil || err.Error() != "payload must be 32 bytes (pre-hashed)" {
 		t.Fatalf("unexpected err %v", err)
 	}
 }

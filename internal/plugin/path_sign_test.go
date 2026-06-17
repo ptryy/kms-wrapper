@@ -21,10 +21,10 @@ func TestSignValidatesPath(t *testing.T) {
 		key    string
 		errSub string
 	}{
-		{"uppercase", "Proj/evm/alice", "segments must match"},
-		{"two-segments", "proj/evm", "format {project}/{environment}/{username}"},
+		{"uppercase", "Proj/prod/alice", "segments must match"},
+		{"two-segments", "proj/prod", "format {project}/{environment}/{username}"},
 		{"empty-segment", "proj//alice", "segments must not be empty"},
-		{"dotdot", "proj/evm/..", "segments must match"},
+		{"dotdot", "proj/prod/..", "segments must match"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -35,20 +35,20 @@ func TestCosmosDeriveAndSign(t *testing.T) {
 	}
 	s := New(v)
 	ctx := context.Background()
-	compressed, err := s.ExportCompressedPubKey(ctx, "proj/mantra/alice")
+	compressed, err := s.ExportCompressedPubKey(ctx, "proj/prod/alice")
 	if err != nil || len(compressed) != 33 {
 		t.Fatalf("compressed len=%d err=%v", len(compressed), err)
 	}
 	doc := protowire.AppendBytes(protowire.AppendTag(nil, 1, protowire.BytesType), []byte("body"))
-	sig, pk, err := s.SignDirect(ctx, "proj/mantra/alice", doc)
+	sig, pk, err := s.SignDirect(ctx, "proj/prod/alice", doc)
 	if err != nil || len(sig) != 64 || len(pk) != 33 {
 		t.Fatalf("direct sig=%d pk=%d err=%v", len(sig), len(pk), err)
 	}
-	sig, pk, err = s.SignAmino(ctx, "proj/mantra/alice", []byte(`{"b":2, "a":1}`+"\n"))
+	sig, pk, err = s.SignAmino(ctx, "proj/prod/alice", []byte(`{"b":2, "a":1}`+"\n"))
 	if err != nil || len(sig) != 64 || len(pk) != 33 {
 		t.Fatalf("amino sig=%d pk=%d err=%v", len(sig), len(pk), err)
 	}
-	if _, _, err := s.SignDirect(ctx, "proj/mantra/alice", []byte("bad")); err == nil || err.Error() != "invalid SignDoc proto encoding" {
+	if _, _, err := s.SignDirect(ctx, "proj/prod/alice", []byte("bad")); err == nil || err.Error() != "invalid SignDoc proto encoding" {
 		t.Fatalf("unexpected proto err %v", err)
 	}
 	_ = sha256.Size

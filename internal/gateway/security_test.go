@@ -24,7 +24,7 @@ func TestRateLimitPerPrincipal(t *testing.T) {
 
 	doSign := func(token string) int {
 		req := httptest.NewRequest(http.MethodPost, "/sign/evm",
-			strings.NewReader(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`))
+			strings.NewReader(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`))
 		req.Header.Set("Authorization", "Bearer "+token)
 		// We need the auth middleware to accept the token, so override Gateway.Token to "secret".
 		// Both principals must be valid bearers; we exercise the per-principal split via two

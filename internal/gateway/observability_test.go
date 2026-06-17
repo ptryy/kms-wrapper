@@ -125,7 +125,7 @@ func TestRequestMetricIncrementsOnSign(t *testing.T) {
 	before := testutil.ToFloat64(kmsHTTPRequestsTotal.WithLabelValues("/v1/sign/evm", "POST", "200"))
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	rr := doRequest(h, http.MethodPost, "/v1/sign/evm",
-		[]byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`), true)
+		[]byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`), true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -228,7 +228,7 @@ func TestRateLimitRejectionLogsInfoAndCounts(t *testing.T) {
 		cfg.Gateway.RateLimit = 1
 		cfg.Gateway.RateBurst = 1
 	})
-	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`)
 	doRequest(h, http.MethodPost, "/v1/sign/evm", body, true) // consume burst
 	rr := doRequest(h, http.MethodPost, "/v1/sign/evm", body, true)
 	if rr.Code != http.StatusTooManyRequests {

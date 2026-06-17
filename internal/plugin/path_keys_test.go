@@ -17,11 +17,11 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 		key    string
 		errSub string
 	}{
-		{"uppercase", "Proj-A/evm/alice", "segments must match"},
-		{"two-segments", "proj-a/evm", "format {project}/{environment}/{username}"},
+		{"uppercase", "Proj-A/prod/alice", "segments must match"},
+		{"two-segments", "proj-a/prod", "format {project}/{environment}/{username}"},
 		{"empty-segment", "proj-a//alice", "segments must not be empty"},
-		{"dotdot", "proj-a/evm/..", "segments must match"},
-		{"four-segments", "proj-a/evm/alice/extra", "format {project}/{environment}/{username}"},
+		{"dotdot", "proj-a/prod/..", "segments must match"},
+		{"four-segments", "proj-a/prod/alice/extra", "format {project}/{environment}/{username}"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -45,7 +45,7 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 	// Happy path still works.
 	resp, err := b.HandleRequest(ctx, &logical.Request{
 		Operation: logical.CreateOperation,
-		Path:      "keys/proj-a/evm/alice",
+		Path:      "keys/proj-a/prod/alice",
 		Storage:   storage,
 	})
 	if err != nil || resp == nil || resp.IsError() {
@@ -86,7 +86,7 @@ func TestListKeysValidatesPrefix(t *testing.T) {
 	// Valid 2-segment prefix accepted.
 	resp, err = b.HandleRequest(ctx, &logical.Request{
 		Operation: logical.ListOperation,
-		Path:      "keys/proj-a/evm/",
+		Path:      "keys/proj-a/prod/",
 		Storage:   storage,
 	})
 	if err != nil {
