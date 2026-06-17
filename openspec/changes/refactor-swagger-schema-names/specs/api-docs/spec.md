@@ -28,7 +28,7 @@ The OpenAPI 3.0 document SHALL describe the EVM sign request as a `oneOf` betwee
 
 #### Scenario: Personal-message variant present
 - **WHEN** the personal-message variant schema is inspected
-- **THEN** `properties.personal_message` is a `string` with `format: hex`
+- **THEN** `properties.personal_message` is a `string` with `pattern` enforcing optional `0x`-prefixed hex (`^(0x)?[0-9a-fA-F]+$`)
 
 #### Scenario: Discriminator drives codegen
 - **WHEN** a client inspects the inline EVM sign request schema at `paths./sign/evm.post.requestBody.content."application/json".schema`

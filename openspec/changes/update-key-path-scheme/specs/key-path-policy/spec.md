@@ -1,6 +1,6 @@
 ## MODIFIED Requirements
 ### Requirement: Key path format validation
-The system SHALL validate key paths against the pattern `{project}/{environment}/{username}` where each segment is a non-empty string containing only `[a-z0-9_-]` characters. The full path used against the `kms-vault-plugin` secrets engine SHALL be prefixed with `kms/keys/`. The `{environment}` segment is free-form (e.g. `prod`, `staging`, `dev`, or any project-defined label); the validator does NOT maintain a reserved list and does NOT emit warnings for unknown values.
+The system SHALL validate key paths against the pattern `{project}/{environment}/{username}` where each segment is a non-empty string containing only `[a-z0-9_-]` characters. The validated path is the key identity (the suffix after the mount prefix); the `kms-vault-plugin` secrets engine exposes it under `kms/keys/<path>` for key CRUD/list and under `kms/sign/<path>` for signing. The `{environment}` segment is free-form (e.g. `prod`, `staging`, `dev`, or any project-defined label); the validator does NOT maintain a reserved list and does NOT emit warnings for unknown values.
 
 #### Scenario: Valid key path
 - **WHEN** the key path `"proj-a/prod/alice"` is validated
@@ -45,7 +45,7 @@ The Vault secrets plugin SHALL validate the `{project}/{environment}/{username}`
 - **THEN** the plugin returns HTTP 400 — the malformed prefix is rejected before any storage read
 
 ### Requirement: Vault policy install is part of bootstrap
-The local-dev bootstrap (`vault/init.sh`) SHALL install `policy-project.hcl` via `vault policy write` and issue a scoped, renewable token via `vault token create -policy=<name>`. The issued token SHALL be written to `.env` as `KMS_VAULT_TOKEN`. The policy path globs SHALL match the live plugin mount (`kms/keys/+/*`, `kms/sign/+/*`).
+The local-dev bootstrap (`vault/init.sh`) SHALL install `policy-project.hcl` via `vault policy write` and issue a scoped, renewable token via `vault token create -policy=<name>`. The issued token SHALL be written to `.env` as `KMS_VAULT_TOKEN`. The policy path globs SHALL be project-scoped under the live plugin mount (`kms/keys/<project>/*` for key CRUD/list and `kms/sign/<project>/*` for signing — e.g. `kms/keys/proj-a/*` and `kms/sign/proj-a/*` as shipped in `vault/policy-project.hcl`).
 
 #### Scenario: Bootstrap installs policy
 - **WHEN** `make dev-up` runs `vault/init.sh` against a fresh Vault dev container
