@@ -28,6 +28,10 @@ func (b *backend) pathsKeys() []*framework.Path {
 			Type:        framework.TypeString,
 			Description: "Comma-separated signing chains to persist with the key.",
 		},
+		"add_chains": {
+			Type:        framework.TypeString,
+			Description: "Comma-separated signing chains to add to the persisted allow-list.",
+		},
 	}
 	return []*framework.Path{
 		{
@@ -42,7 +46,7 @@ func (b *backend) pathsKeys() []*framework.Path {
 			Fields:  nameField,
 			Operations: map[logical.Operation]framework.OperationHandler{
 				logical.CreateOperation: &framework.PathOperation{Callback: b.handleCreateKey},
-				logical.UpdateOperation: &framework.PathOperation{Callback: b.handleCreateKey},
+				logical.UpdateOperation: &framework.PathOperation{Callback: b.handleUpdateChains},
 				logical.ReadOperation:   &framework.PathOperation{Callback: b.handleReadKey},
 				logical.DeleteOperation: &framework.PathOperation{Callback: b.handleDeleteKey},
 				logical.ListOperation:   &framework.PathOperation{Callback: b.handleListKeys},

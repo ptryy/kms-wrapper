@@ -15,7 +15,7 @@ func updateChains(t *testing.T, b *backend, storage logical.Storage, name string
 	t.Helper()
 	resp, err := b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
-		Path:      "keys/" + name + "/chains",
+		Path:      "keys/" + name,
 		Storage:   storage,
 		Data:      data,
 	})
@@ -32,7 +32,7 @@ func updateChainsErr(t *testing.T, b *backend, storage logical.Storage, name str
 	t.Helper()
 	return b.HandleRequest(context.Background(), &logical.Request{
 		Operation: logical.UpdateOperation,
-		Path:      "keys/" + name + "/chains",
+		Path:      "keys/" + name,
 		Storage:   storage,
 		Data:      data,
 	})
@@ -138,5 +138,27 @@ func TestUpdateChainsConcurrentNoLostUpdate(t *testing.T) {
 
 	if stored := readEntry(t, storage, "proj-a/prod/alice"); !reflect.DeepEqual(stored.Chains, []string{"cosmos", "evm"}) {
 		t.Fatalf("lost update: chains = %v", stored.Chains)
+	}
+}
+
+func TestUpdateChainsWorksForKeyNamedChains(t *testing.T) {
+	b, storage := testBackend(t)
+	writeKey(t, b, storage, "proj-a/prod/chains")
+
+	resp := updateChains(t, b, storage, "proj-a/prod/chains", map[string]interface{}{
+		"add_chains": "cosmos",
+	})
+	got, ok := resp.Data["chains"].([]string)
+	if !ok {
+		t.Fatalf("chains response type = %T, want []string", resp.Data["chains"])
+	}
+	if want := []string{"cosmos", "evm"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("chains = %v, want %v", got, want)
+	}
+	if resp.Data["path"] != "proj-a/prod/chains" {
+		t.Fatalf("path = %v, want proj-a/prod/chains", resp.Data["path"])
+	}
+	if stored := readEntry(t, storage, "proj-a/prod/chains"); !reflect.DeepEqual(stored.Chains, []string{"cosmos", "evm"}) {
+		t.Fatalf("stored chains = %v, want [cosmos evm]", stored.Chains)
 	}
 }

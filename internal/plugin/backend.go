@@ -55,7 +55,6 @@ func newBackend() *backend {
 			SealWrapStorage: []string{"keys/"},
 		},
 		Paths: framework.PathAppend(
-			b.pathsKeysUpdate(),
 			b.pathsKeys(),
 			b.pathsSign(),
 		),

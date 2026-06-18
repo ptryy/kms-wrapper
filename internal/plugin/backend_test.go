@@ -107,6 +107,41 @@ func TestCreateReadDeleteRoundTrip(t *testing.T) {
 	}
 }
 
+func TestCreateReadDeleteRoundTripNameEndingChains(t *testing.T) {
+	b, storage := testBackend(t)
+	ctx := context.Background()
+	const name = "proj/prod/chains"
+
+	created := writeKey(t, b, storage, name)
+	if _, ok := created.Data["compressed_pub_key"].(string); !ok {
+		t.Fatalf("create response missing compressed_pub_key: %v", created.Data)
+	}
+
+	read, err := b.HandleRequest(ctx, &logical.Request{
+		Operation: logical.ReadOperation,
+		Path:      "keys/" + name,
+		Storage:   storage,
+	})
+	if err != nil || read == nil || read.IsError() {
+		t.Fatalf("read key: err=%v resp=%v", err, read)
+	}
+	if read.Data["evm_address"] != created.Data["evm_address"] {
+		t.Fatalf("evm_address differs across create/read: %v vs %v", created.Data["evm_address"], read.Data["evm_address"])
+	}
+
+	del, err := b.HandleRequest(ctx, &logical.Request{
+		Operation: logical.DeleteOperation,
+		Path:      "keys/" + name,
+		Storage:   storage,
+	})
+	if err != nil {
+		t.Fatalf("delete key: %v", err)
+	}
+	if del != nil && del.IsError() {
+		t.Fatalf("delete returned error: %v", del)
+	}
+}
+
 func TestListKeys(t *testing.T) {
 	b, storage := testBackend(t)
 	ctx := context.Background()
@@ -146,6 +181,7 @@ func TestSignRoundTrip(t *testing.T) {
 		Path:      "sign/" + name,
 		Storage:   storage,
 		Data: map[string]interface{}{
+			"chain": "evm",
 			"input": hex.EncodeToString(digest),
 		},
 	})
