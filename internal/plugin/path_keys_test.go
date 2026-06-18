@@ -6,7 +6,9 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/hashicorp/vault/sdk/logical"
 )
 
@@ -89,6 +91,60 @@ func TestCreateKeyRejectsMismatchedIdempotentChains(t *testing.T) {
 	}
 	if msg := resp.Error().Error(); !strings.Contains(msg, "chains mismatch on idempotent create") {
 		t.Fatalf("expected mismatch error, got %q", msg)
+	}
+}
+
+func TestCreateKeyBackfillsLegacyEmptyChains(t *testing.T) {
+	b, storage := testBackend(t)
+
+	priv, err := crypto.GenerateKey()
+	if err != nil {
+		t.Fatalf("generate legacy key: %v", err)
+	}
+	legacy := &KeyEntry{
+		PrivateKey:       crypto.FromECDSA(priv),
+		CompressedPubKey: crypto.CompressPubkey(&priv.PublicKey),
+		EVMAddress:       crypto.PubkeyToAddress(priv.PublicKey).Hex(),
+		Source:           "generated",
+		CreatedAt:        time.Now().UTC(),
+	}
+	entry, err := logical.StorageEntryJSON("keys/proj-a/prod/alice", legacy)
+	if err != nil {
+		t.Fatalf("legacy storage entry: %v", err)
+	}
+	if err := storage.Put(context.Background(), entry); err != nil {
+		t.Fatalf("store legacy key: %v", err)
+	}
+
+	resp, err := writeKeyWithData(t, b, storage, "proj-a/prod/alice", map[string]interface{}{
+		"chains": "cosmos,EVM,cosmos",
+	})
+	if err != nil || resp == nil || resp.IsError() {
+		t.Fatalf("backfill err=%v resp=%v", err, resp)
+	}
+
+	got, ok := resp.Data["chains"].([]string)
+	if !ok {
+		t.Fatalf("chains response type = %T, want []string", resp.Data["chains"])
+	}
+	want := []string{"cosmos", "evm"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("chains = %v, want %v", got, want)
+	}
+	if resp.Data["evm_address"] != legacy.EVMAddress {
+		t.Fatalf("evm_address changed during backfill: %v vs %v", resp.Data["evm_address"], legacy.EVMAddress)
+	}
+
+	stored, err := storage.Get(context.Background(), "keys/proj-a/prod/alice")
+	if err != nil {
+		t.Fatalf("load backfilled key: %v", err)
+	}
+	var gotEntry KeyEntry
+	if err := stored.DecodeJSON(&gotEntry); err != nil {
+		t.Fatalf("decode backfilled key: %v", err)
+	}
+	if !reflect.DeepEqual(gotEntry.Chains, want) {
+		t.Fatalf("stored chains = %v, want %v", gotEntry.Chains, want)
 	}
 }
 

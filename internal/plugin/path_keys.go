@@ -104,6 +104,13 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 		return nil, err
 	}
 	if existing != nil {
+		if len(existing.Chains) == 0 {
+			existing.Chains = append([]string(nil), chainsToStrings(parsedChains)...)
+			if err := b.storeKey(ctx, req, name, existing); err != nil {
+				return nil, err
+			}
+			return keyInfoResponse(existing), nil
+		}
 		if !sameChainSet(existing.Chains, chainsToStrings(parsedChains)) {
 			return logical.ErrorResponse("chains mismatch on idempotent create"), logical.ErrInvalidRequest
 		}
