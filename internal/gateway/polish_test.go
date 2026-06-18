@@ -191,10 +191,10 @@ func TestKeysIdempotentReturns200(t *testing.T) {
 	pub, _, _ := newKeyPair(t)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
-		createKey:    func(_ context.Context, _ string) error { return nil },
+		createKey:    func(_ context.Context, _ string, _ []string) error { return nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/v1/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/v1/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm"]}`), true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("idempotent re-create should be 200, got %d body=%s", rr.Code, rr.Body.String())
 	}

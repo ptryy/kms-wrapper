@@ -42,22 +42,29 @@ func (cosmosMock) SignAmino(_ context.Context, _ string, _ []byte) ([]byte, []by
 }
 
 type keyStoreMock struct {
-	createKey    func(ctx context.Context, path string) error
+	createKey    func(ctx context.Context, path string, chains []string) error
 	getPublicKey func(ctx context.Context, path string) ([]byte, error)
+	getKeyChains func(ctx context.Context, path string) ([]string, error)
 	listKeys     func(ctx context.Context, prefix string) ([]string, error)
 }
 
-func (k keyStoreMock) CreateKey(ctx context.Context, path string) error {
+func (k keyStoreMock) CreateKey(ctx context.Context, path string, chains []string) error {
 	if k.createKey == nil {
 		return errors.New("CreateKey not stubbed")
 	}
-	return k.createKey(ctx, path)
+	return k.createKey(ctx, path, chains)
 }
 func (k keyStoreMock) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
 	if k.getPublicKey == nil {
 		return nil, errors.New("GetPublicKey not stubbed")
 	}
 	return k.getPublicKey(ctx, path)
+}
+func (k keyStoreMock) GetKeyChains(ctx context.Context, path string) ([]string, error) {
+	if k.getKeyChains == nil {
+		return nil, errors.New("GetKeyChains not stubbed")
+	}
+	return k.getKeyChains(ctx, path)
 }
 func (k keyStoreMock) ListKeys(ctx context.Context, prefix string) ([]string, error) {
 	if k.listKeys == nil {

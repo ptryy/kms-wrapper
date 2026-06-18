@@ -39,7 +39,7 @@ func decodeJSON(t *testing.T, body []byte, v any) {
 }
 
 func TestCreateKeyHappyPath(t *testing.T) {
-	pub, evmAddr, cosmosAddr := newKeyPair(t)
+	pub, evmAddr, _ := newKeyPair(t)
 	created := false
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) {
@@ -48,13 +48,13 @@ func TestCreateKeyHappyPath(t *testing.T) {
 			}
 			return pub, nil
 		},
-		createKey: func(_ context.Context, _ string) error {
+		createKey: func(_ context.Context, _ string, _ []string) error {
 			created = true
 			return nil
 		},
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm"]}`), true)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -69,8 +69,11 @@ func TestCreateKeyHappyPath(t *testing.T) {
 	if resp.EVMAddress != evmAddr {
 		t.Fatalf("evm_address got=%s want=%s", resp.EVMAddress, evmAddr)
 	}
-	if resp.CosmosAddress != cosmosAddr {
-		t.Fatalf("cosmos_address got=%s want=%s", resp.CosmosAddress, cosmosAddr)
+	if resp.CosmosAddress != "" {
+		t.Fatalf("expected no cosmos address, got %q", resp.CosmosAddress)
+	}
+	if got, want := resp.Chains, []apptypes.Chain{apptypes.ChainEVM}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("chains got=%#v want=%#v", got, want)
 	}
 	if resp.AlreadyExisted {
 		t.Fatalf("expected already_existed=false on first create")
@@ -81,10 +84,10 @@ func TestCreateKeyIdempotent(t *testing.T) {
 	pub, _, _ := newKeyPair(t)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
-		createKey:    func(_ context.Context, _ string) error { return nil },
+		createKey:    func(_ context.Context, _ string, _ []string) error { return nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm","cosmos"]}`), true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -95,6 +98,9 @@ func TestCreateKeyIdempotent(t *testing.T) {
 	}
 	if resp.PublicKeyHex != hex.EncodeToString(pub) {
 		t.Fatalf("public_key_hex mismatch on idempotent re-create")
+	}
+	if got, want := resp.Chains, []apptypes.Chain{apptypes.ChainCosmos, apptypes.ChainEVM}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("chains got=%#v want=%#v", got, want)
 	}
 }
 
@@ -122,6 +128,28 @@ func TestCreateKeyInvalidPath(t *testing.T) {
 	}
 }
 
+func TestCreateKeyMissingChains(t *testing.T) {
+	h := newGatewayHandlerWithKeys(keyStoreMock{})
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got, want := rr.Body.String(), "{\"error\":\"chains is required and must be a non-empty subset of [evm, cosmos]\"}\n"; got != want {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+}
+
+func TestCreateKeyUnknownChains(t *testing.T) {
+	h := newGatewayHandlerWithKeys(keyStoreMock{})
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm","solana"]}`), true)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
+	}
+	if got, want := rr.Body.String(), "{\"error\":\"chains is required and must be a non-empty subset of [evm, cosmos]\"}\n"; got != want {
+		t.Fatalf("body=%s", rr.Body.String())
+	}
+}
+
 func TestCreateKeyMalformedJSON(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":`), true)
@@ -139,10 +167,10 @@ func TestCreateKeyPermissionDenied(t *testing.T) {
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) {
 			return nil, fmt.Errorf("%w: key not found", apptypes.ErrNotFound)
 		},
-		createKey: func(_ context.Context, _ string) error { return wrapped },
+		createKey: func(_ context.Context, _ string, _ []string) error { return wrapped },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm"]}`), true)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -157,10 +185,10 @@ func TestCreateKeyGenericVaultError(t *testing.T) {
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) {
 			return nil, fmt.Errorf("%w: key not found", apptypes.ErrNotFound)
 		},
-		createKey: func(_ context.Context, _ string) error { return boom },
+		createKey: func(_ context.Context, _ string, _ []string) error { return boom },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm"]}`), true)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -174,16 +202,17 @@ func TestCreateKeyGenericVaultError(t *testing.T) {
 
 func TestCreateKeyUnauthorized(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), false)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice","chains":["evm"]}`), false)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
 }
 
 func TestShowKeyHappyPath(t *testing.T) {
-	pub, evmAddr, cosmosAddr := newKeyPair(t)
+	pub, evmAddr, _ := newKeyPair(t)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
+		getKeyChains: func(_ context.Context, _ string) ([]string, error) { return []string{"evm"}, nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
 	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
@@ -192,13 +221,17 @@ func TestShowKeyHappyPath(t *testing.T) {
 	}
 	var info apptypes.KeyInfo
 	decodeJSON(t, rr.Body.Bytes(), &info)
-	if info.EVMAddress != evmAddr || info.CosmosAddress != cosmosAddr {
+	if info.EVMAddress != evmAddr || info.CosmosAddress != "" {
 		t.Fatalf("addresses mismatch: %#v", info)
+	}
+	if got, want := info.Chains, []apptypes.Chain{apptypes.ChainEVM}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("chains got=%#v want=%#v", got, want)
 	}
 }
 
 func TestShowKeyNotFound(t *testing.T) {
 	ks := keyStoreMock{
+		getKeyChains: func(_ context.Context, _ string) ([]string, error) { return []string{"evm"}, nil },
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) {
 			return nil, fmt.Errorf("%w: key not found", apptypes.ErrNotFound)
 		},
@@ -236,6 +269,7 @@ func TestShowKeyPermissionDenied(t *testing.T) {
 	wrapped := fmt.Errorf("%w: vault said no", apptypes.ErrPermission)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return nil, wrapped },
+		getKeyChains: func(_ context.Context, _ string) ([]string, error) { return nil, nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
 	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
@@ -268,7 +302,7 @@ func TestListKeysHappyPath(t *testing.T) {
 	}
 	var resp apptypes.KeyListResponse
 	decodeJSON(t, rr.Body.Bytes(), &resp)
-	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0] != "evm/alice" {
+	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0].Path != "evm/alice" {
 		t.Fatalf("unexpected response: %#v", resp)
 	}
 }
@@ -345,6 +379,7 @@ func TestKeysShareRateLimitWithSign(t *testing.T) {
 	pub, _, _ := newKeyPair(t)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
+		getKeyChains: func(_ context.Context, _ string) ([]string, error) { return []string{"evm"}, nil },
 		listKeys:     func(_ context.Context, _ string) ([]string, error) { return []string{}, nil },
 	}
 	h := newGatewayHandlerWithKeys(ks, func(cfg *config.Config) {
@@ -398,6 +433,7 @@ func TestKeysInfoRoutesToShow(t *testing.T) {
 	pub, _, _ := newKeyPair(t)
 	ks := keyStoreMock{
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
+		getKeyChains: func(_ context.Context, _ string) ([]string, error) { return []string{"evm"}, nil },
 		listKeys: func(_ context.Context, _ string) ([]string, error) {
 			listCalled = true
 			return nil, nil

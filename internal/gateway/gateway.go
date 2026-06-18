@@ -35,8 +35,9 @@ import (
 type HealthChecker interface{ Health() error }
 
 type KeyStore interface {
-	CreateKey(ctx context.Context, path string) error
+	CreateKey(ctx context.Context, path string, chains []string) error
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
+	GetKeyChains(ctx context.Context, path string) ([]string, error)
 	ListKeys(ctx context.Context, prefix string) ([]string, error)
 }
 
@@ -369,7 +370,6 @@ func normalizeSwaggerDocServers(doc, origin string) ([]byte, error) {
 	return json.Marshal(spec)
 }
 
-
 func (s *Server) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -701,6 +701,15 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	rawChains := make([]string, len(req.Chains))
+	for i, chain := range req.Chains {
+		rawChains[i] = string(chain)
+	}
+	chains, err := apptypes.ParseChains(rawChains)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	alreadyExisted := false
 	if _, err := s.keys.GetPublicKey(r.Context(), req.Path); err == nil {
@@ -710,12 +719,16 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.keys.CreateKey(r.Context(), req.Path); err != nil {
+	createChains := make([]string, len(chains))
+	for i, chain := range chains {
+		createChains[i] = string(chain)
+	}
+	if err := s.keys.CreateKey(r.Context(), req.Path, createChains); err != nil {
 		s.writeVaultErr(w, r, err, req.Path, "CreateKey")
 		return
 	}
 
-	info, err := keyinfo.For(r.Context(), s.keys, req.Path, keyinfo.DefaultHRP)
+	info, err := keyinfo.For(r.Context(), s.keys, req.Path, keyinfo.DefaultHRP, chains)
 	if err != nil {
 		s.writeVaultErr(w, r, err, req.Path, "deriveKeyInfo")
 		return
@@ -751,7 +764,16 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP)
+	rawChains, err := s.keys.GetKeyChains(r.Context(), path)
+	if err != nil {
+		s.writeVaultErr(w, r, err, path, "GetKeyChains")
+		return
+	}
+	chains := make([]apptypes.Chain, len(rawChains))
+	for i, chain := range rawChains {
+		chains[i] = apptypes.Chain(chain)
+	}
+	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP, chains)
 	if err != nil {
 		s.writeVaultErr(w, r, err, path, "GetPublicKey")
 		return
@@ -808,11 +830,15 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 		end = len(ks)
 	}
 	page := append([]string{}, ks[offset:end]...)
+	entries := make([]apptypes.KeyListEntry, 0, len(page))
+	for _, path := range page {
+		entries = append(entries, apptypes.KeyListEntry{Path: path, Chains: []apptypes.Chain{}})
+	}
 	next := ""
 	if end < len(ks) {
 		next = encodeListCursor(prefix, end)
 	}
-	writeJSON(w, apptypes.KeyListResponse{Keys: page, Count: len(page), NextCursor: next})
+	writeJSON(w, apptypes.KeyListResponse{Keys: entries, Count: len(entries), NextCursor: next})
 }
 
 const (
@@ -904,4 +930,3 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func decodeHex(s string) ([]byte, error) {
 	return hex.DecodeString(strings.TrimPrefix(s, "0x"))
 }
-
