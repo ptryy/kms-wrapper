@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -294,6 +295,17 @@ func TestListKeysHappyPath(t *testing.T) {
 			}
 			return []string{"evm/alice", "cosmos/bob"}, nil
 		},
+		getKeyChains: func(_ context.Context, path string) ([]string, error) {
+			switch path {
+			case "evm/alice":
+				return []string{"evm"}, nil
+			case "cosmos/bob":
+				return []string{"cosmos", "evm"}, nil
+			default:
+				t.Fatalf("unexpected path=%q", path)
+				return nil, nil
+			}
+		},
 	}
 	h := newGatewayHandlerWithKeys(ks)
 	rr := doRequest(h, http.MethodGet, "/keys?prefix=proj-a/", nil, true)
@@ -304,6 +316,12 @@ func TestListKeysHappyPath(t *testing.T) {
 	decodeJSON(t, rr.Body.Bytes(), &resp)
 	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0].Path != "evm/alice" {
 		t.Fatalf("unexpected response: %#v", resp)
+	}
+	if got, want := resp.Keys[0].Chains, []apptypes.Chain{apptypes.ChainEVM}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("first chains got=%#v want=%#v", got, want)
+	}
+	if got, want := resp.Keys[1].Chains, []apptypes.Chain{apptypes.ChainCosmos, apptypes.ChainEVM}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("second chains got=%#v want=%#v", got, want)
 	}
 }
 
@@ -340,6 +358,45 @@ func TestListKeysEmptyResultIsNotNull(t *testing.T) {
 	body := rr.Body.String()
 	if body != "{\"keys\":[],\"count\":0,\"next_cursor\":\"\"}\n" {
 		t.Fatalf("expected empty array, got %s", body)
+	}
+}
+
+func TestListKeysChainsReadFailureIsNull(t *testing.T) {
+	ks := keyStoreMock{
+		listKeys: func(_ context.Context, _ string) ([]string, error) {
+			return []string{"evm/alice", "cosmos/bob", "evm/charlie"}, nil
+		},
+		getKeyChains: func(_ context.Context, path string) ([]string, error) {
+			switch path {
+			case "evm/alice":
+				return []string{"evm"}, nil
+			case "cosmos/bob":
+				return nil, errors.New("tag lookup failed")
+			case "evm/charlie":
+				return []string{"cosmos"}, nil
+			default:
+				return nil, fmt.Errorf("unexpected path %q", path)
+			}
+		},
+	}
+	h := newGatewayHandlerWithKeys(ks)
+	rr := doRequest(h, http.MethodGet, "/keys?prefix=proj-a/", nil, true)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
+	}
+	type entry struct {
+		Path   string          `json:"path"`
+		Chains json.RawMessage `json:"chains"`
+	}
+	var resp struct {
+		Keys []entry `json:"keys"`
+	}
+	decodeJSON(t, rr.Body.Bytes(), &resp)
+	if got, want := string(resp.Keys[1].Chains), "null"; got != want {
+		t.Fatalf("expected failed chains read to serialize null, got %s", got)
+	}
+	if got, want := string(resp.Keys[0].Chains), `["evm"]`; got != want {
+		t.Fatalf("first chains got %s want %s", got, want)
 	}
 }
 

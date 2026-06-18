@@ -46,7 +46,7 @@ func NewRootCommand() *cobra.Command {
 	st := &cliState{}
 	cmd := &cobra.Command{
 		Use:   "kms-wrapper",
-		Short: "Vault Transit-backed multi-chain signing gateway",
+		Short: "kms-vault-plugin-backed multi-chain signing gateway",
 	}
 	home, _ := os.UserHomeDir()
 	cmd.PersistentFlags().StringVar(&st.configPath, "config", filepath.Join(home, ".kms-wrapper", "config.yaml"), "config file")
@@ -219,8 +219,8 @@ func guardSwaggerNonLoopback(cfg config.Config, warnOut io.Writer) error {
 }
 
 func keysCmd(st *cliState) *cobra.Command {
-	var path, prefix, chainsRaw string
-	keys := &cobra.Command{Use: "keys", Short: "manage Vault Transit keys"}
+	var path, prefix, chainsRaw, addRaw string
+	keys := &cobra.Command{Use: "keys", Short: "manage kms-vault-plugin keys"}
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "create a key",
@@ -244,6 +244,32 @@ func keysCmd(st *cliState) *cobra.Command {
 				return err
 			}
 			return printKeyInfo(cmd, c, path)
+		},
+	}
+	updateChains := &cobra.Command{
+		Use:   "update-chains",
+		Short: "expand a key's signing chains",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if path == "" {
+				return errors.New("required flag missing: path")
+			}
+			c, err := st.client(cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			addChains, err := types.ParseChains(strings.Split(addRaw, ","))
+			if err != nil {
+				return err
+			}
+			chainStrings := make([]string, len(addChains))
+			for i, chain := range addChains {
+				chainStrings[i] = string(chain)
+			}
+			chains, err := c.UpdateKeyChains(cmd.Context(), path, chainStrings)
+			if err != nil {
+				return err
+			}
+			return json.NewEncoder(cmd.OutOrStdout()).Encode(chains)
 		},
 	}
 	show := &cobra.Command{
@@ -280,9 +306,11 @@ func keysCmd(st *cliState) *cobra.Command {
 	}
 	create.Flags().StringVar(&path, "path", "", "key path")
 	create.Flags().StringVar(&chainsRaw, "chains", "", "comma-separated signing chains (evm,cosmos)")
+	updateChains.Flags().StringVar(&path, "path", "", "key path")
+	updateChains.Flags().StringVar(&addRaw, "add", "", "comma-separated signing chains to add (evm,cosmos)")
 	show.Flags().StringVar(&path, "path", "", "key path")
 	list.Flags().StringVar(&prefix, "prefix", "", "key path prefix (optional)")
-	keys.AddCommand(create, show, list)
+	keys.AddCommand(create, updateChains, show, list)
 	return keys
 }
 

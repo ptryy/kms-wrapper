@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -930,9 +931,36 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 		end = len(ks)
 	}
 	page := append([]string{}, ks[offset:end]...)
-	entries := make([]apptypes.KeyListEntry, 0, len(page))
-	for _, path := range page {
-		entries = append(entries, apptypes.KeyListEntry{Path: path, Chains: []apptypes.Chain{}})
+	entries := make([]apptypes.KeyListEntry, len(page))
+	for i, path := range page {
+		entries[i].Path = path
+	}
+	if len(page) > 0 {
+		jobs := make(chan listKeyChainsJob)
+		workers := listKeyChainsWorkers
+		if len(page) < workers {
+			workers = len(page)
+		}
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for job := range jobs {
+					ctx, cancel := context.WithTimeout(r.Context(), listKeyChainsTimeout)
+					chains, err := s.keys.GetKeyChains(ctx, job.path)
+					cancel()
+					if err == nil {
+						entries[job.index].Chains = toKeyListChains(chains)
+					}
+				}
+			}()
+		}
+		for i, path := range page {
+			jobs <- listKeyChainsJob{index: i, path: path}
+		}
+		close(jobs)
+		wg.Wait()
 	}
 	next := ""
 	if end < len(ks) {
@@ -942,9 +970,24 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 }
 
 const (
-	listLimitDefault = 100
-	listLimitMax     = 1000
+	listLimitDefault     = 100
+	listLimitMax         = 1000
+	listKeyChainsWorkers = 8
+	listKeyChainsTimeout = 2 * time.Second
 )
+
+type listKeyChainsJob struct {
+	index int
+	path  string
+}
+
+func toKeyListChains(chains []string) []apptypes.Chain {
+	out := make([]apptypes.Chain, 0, len(chains))
+	for _, chain := range chains {
+		out = append(out, apptypes.Chain(chain))
+	}
+	return out
+}
 
 // parseListLimit parses ?limit and clamps it to [1, listLimitMax]. Empty
 // string → listLimitDefault. Negative or non-numeric returns an error so

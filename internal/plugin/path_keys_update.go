@@ -13,28 +13,6 @@ import (
 	"github.com/ryan-truong/kms-wrapper/pkg/types"
 )
 
-func (b *backend) pathsKeysUpdate() []*framework.Path {
-	return []*framework.Path{
-		{
-			Pattern: "keys/(?P<name>.+?)/chains/?$",
-			Fields: map[string]*framework.FieldSchema{
-				"name": {
-					Type:        framework.TypeString,
-					Description: "Key name to update.",
-				},
-				"add_chains": {
-					Type:        framework.TypeString,
-					Description: "Comma-separated signing chains to add to the persisted allow-list.",
-				},
-			},
-			Operations: map[logical.Operation]framework.OperationHandler{
-				logical.UpdateOperation: &framework.PathOperation{Callback: b.handleUpdateChains},
-			},
-			HelpSynopsis: "Expand a key's persisted signing-chain allow-list.",
-		},
-	}
-}
-
 func (b *backend) handleUpdateChains(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
 	if err := updateChainsOnlyAdditions(data); err != nil {
 		return logical.ErrorResponse("only add_chains is supported"), logical.ErrInvalidRequest

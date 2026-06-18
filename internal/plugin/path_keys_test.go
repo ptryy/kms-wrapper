@@ -22,6 +22,16 @@ func writeKeyWithData(t *testing.T, b *backend, storage logical.Storage, name st
 	})
 }
 
+func writeKeyWithUpdate(t *testing.T, b *backend, storage logical.Storage, name string, data map[string]interface{}) (*logical.Response, error) {
+	t.Helper()
+	return b.HandleRequest(context.Background(), &logical.Request{
+		Operation: logical.UpdateOperation,
+		Path:      "keys/" + name,
+		Storage:   storage,
+		Data:      data,
+	})
+}
+
 func TestCreateKeyPersistsCanonicalChains(t *testing.T) {
 	b, storage := testBackend(t)
 
@@ -162,6 +172,7 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 		{"dotdot", "proj-a/prod/..", "segments must match"},
 		{"four-segments", "proj-a/prod/alice/extra", "format {project}/{environment}/{username}"},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			resp, err := b.HandleRequest(ctx, &logical.Request{
@@ -172,12 +183,14 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 			if !errors.Is(err, logical.ErrInvalidRequest) {
 				t.Fatalf("expected ErrInvalidRequest, got err=%v resp=%v", err, resp)
 			}
+
 			if resp == nil || !resp.IsError() {
 				t.Fatalf("expected error response, got %v", resp)
 			}
 			if msg := resp.Error().Error(); !strings.Contains(msg, tc.errSub) {
 				t.Fatalf("expected error %q to contain %q", msg, tc.errSub)
 			}
+
 		})
 	}
 
@@ -190,6 +203,25 @@ func TestCreateKeyValidatesPath(t *testing.T) {
 	})
 	if err != nil || resp == nil || resp.IsError() {
 		t.Fatalf("happy create err=%v resp=%v", err, resp)
+	}
+
+}
+
+func TestCreateKeyViaUpdateOperationAcceptsChains(t *testing.T) {
+	b, storage := testBackend(t)
+	resp, err := writeKeyWithUpdate(t, b, storage, "proj-a/prod/alice", map[string]interface{}{
+		"chains": "evm",
+	})
+	if err != nil || resp == nil || resp.IsError() {
+		t.Fatalf("update create err=%v resp=%v", err, resp)
+	}
+	got, ok := resp.Data["chains"].([]string)
+	if !ok {
+		t.Fatalf("chains response type = %T, want []string", resp.Data["chains"])
+	}
+	want := []string{"evm"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("chains = %v, want %v", got, want)
 	}
 }
 

@@ -46,7 +46,7 @@ func (b *backend) pathsKeys() []*framework.Path {
 			Fields:  nameField,
 			Operations: map[logical.Operation]framework.OperationHandler{
 				logical.CreateOperation: &framework.PathOperation{Callback: b.handleCreateKey},
-				logical.UpdateOperation: &framework.PathOperation{Callback: b.handleUpdateChains},
+				logical.UpdateOperation: &framework.PathOperation{Callback: b.handleKeyWrite},
 				logical.ReadOperation:   &framework.PathOperation{Callback: b.handleReadKey},
 				logical.DeleteOperation: &framework.PathOperation{Callback: b.handleDeleteKey},
 				logical.ListOperation:   &framework.PathOperation{Callback: b.handleListKeys},
@@ -55,6 +55,13 @@ func (b *backend) pathsKeys() []*framework.Path {
 			HelpSynopsis:   "Manage a secp256k1 key (create, read, delete).",
 		},
 	}
+}
+
+func (b *backend) handleKeyWrite(ctx context.Context, req *logical.Request, data *framework.FieldData) (*logical.Response, error) {
+	if _, ok := data.GetOk("chains"); ok {
+		return b.handleCreateKey(ctx, req, data)
+	}
+	return b.handleUpdateChains(ctx, req, data)
 }
 
 func (b *backend) keyName(req *logical.Request, data *framework.FieldData) string {
@@ -93,6 +100,14 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
 	}
 
+	// Hold the per-key lock for the whole create: the idempotent legacy-backfill
+	// branch below does a load→store that must not interleave with a concurrent
+	// update-chains (same lock) on the same key, and two concurrent creates of
+	// the same new key must not both generate material.
+	lock := b.keyLock(name)
+	lock.Lock()
+	defer lock.Unlock()
+
 	chains, err := requestChains(data)
 	if err != nil {
 		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
@@ -109,6 +124,11 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 	}
 	if existing != nil {
 		if len(existing.Chains) == 0 {
+			// Intentional capability grant, not a fail-closed hole: a legacy key
+			// with no persisted chains still 403s on every sign until someone
+			// with create authority explicitly re-creates it carrying chains.
+			// This repairs such a key in place (idempotent lifecycle), it does
+			// not weaken the sign-time fail-closed guarantee.
 			existing.Chains = append([]string(nil), chainsToStrings(parsedChains)...)
 			if err := b.storeKey(ctx, req, name, existing); err != nil {
 				return nil, err

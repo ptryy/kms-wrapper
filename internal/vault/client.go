@@ -247,7 +247,7 @@ func (c *Client) CreateKey(ctx context.Context, path string, chains []string) er
 	}
 	start := time.Now()
 	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{
-		"chains": chains,
+		"chains": strings.Join(chains, ","),
 	})
 	mapped := mapVaultErr(path, err)
 	c.recordCall("create", start, mapped)
@@ -375,7 +375,7 @@ func (c *Client) UpdateKeyChains(ctx context.Context, path string, addChains []s
 	}
 	start := time.Now()
 	secret, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{
-		"add_chains": addChains,
+		"add_chains": strings.Join(addChains, ","),
 	})
 	if err != nil {
 		mapped := mapVaultErr(path, err)

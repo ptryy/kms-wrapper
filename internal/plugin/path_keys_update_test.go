@@ -102,20 +102,24 @@ func TestUpdateChainsRejectsRemoveAndReplace(t *testing.T) {
 	b, storage := testBackend(t)
 	writeKey(t, b, storage, "proj-a/prod/alice")
 
-	for _, body := range []map[string]interface{}{
-		{"remove_chains": "evm"},
-		{"chains": "cosmos"},
-		{"add_chains": "cosmos", "remove_chains": "evm"},
-	} {
-		resp, err := updateChainsErr(t, b, storage, "proj-a/prod/alice", body)
+	cases := []struct {
+		body   map[string]interface{}
+		errSub string
+	}{
+		{body: map[string]interface{}{"remove_chains": "evm"}, errSub: "only add_chains is supported"},
+		{body: map[string]interface{}{"chains": "cosmos"}, errSub: "chains mismatch on idempotent create"},
+		{body: map[string]interface{}{"add_chains": "cosmos", "remove_chains": "evm"}, errSub: "only add_chains is supported"},
+	}
+	for _, tc := range cases {
+		resp, err := updateChainsErr(t, b, storage, "proj-a/prod/alice", tc.body)
 		if !errors.Is(err, logical.ErrInvalidRequest) {
-			t.Fatalf("want ErrInvalidRequest for %v, got err=%v resp=%v", body, err, resp)
+			t.Fatalf("want ErrInvalidRequest for %v, got err=%v resp=%v", tc.body, err, resp)
 		}
 		if resp == nil || !resp.IsError() {
-			t.Fatalf("expected error response for %v, got %v", body, resp)
+			t.Fatalf("expected error response for %v, got %v", tc.body, resp)
 		}
-		if msg := resp.Error().Error(); !strings.Contains(msg, "only add_chains is supported") {
-			t.Fatalf("expected only-add error for %v, got %q", body, msg)
+		if msg := resp.Error().Error(); !strings.Contains(msg, tc.errSub) {
+			t.Fatalf("expected error containing %q for %v, got %q", tc.errSub, tc.body, msg)
 		}
 	}
 }

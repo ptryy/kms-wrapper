@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -51,13 +52,27 @@ func TestClientMockPlugin(t *testing.T) {
 			case http.MethodPost, http.MethodPut:
 				var body map[string]any
 				_ = json.NewDecoder(r.Body).Decode(&body)
-				if got, ok := body["add_chains"].([]any); ok {
-					added := make([]string, 0, len(got))
-					for _, chain := range got {
-						if s, ok := chain.(string); ok {
-							added = append(added, s)
+				extract := func(v any) []string {
+					switch got := v.(type) {
+					case string:
+						if got == "" {
+							return nil
 						}
+						return strings.Split(got, ",")
+					case []any:
+						out := make([]string, 0, len(got))
+						for _, chain := range got {
+							if s, ok := chain.(string); ok {
+								out = append(out, s)
+							}
+						}
+						return out
+					default:
+						return nil
 					}
+				}
+				if got := extract(body["add_chains"]); len(got) > 0 {
+					added := got
 					seen := map[string]bool{}
 					for _, chain := range append(mp.chains, added...) {
 						seen[chain] = true
@@ -67,13 +82,9 @@ func TestClientMockPlugin(t *testing.T) {
 						mp.chains = append(mp.chains, chain)
 					}
 					sort.Strings(mp.chains)
-				} else if got, ok := body["chains"].([]any); ok {
+				} else if got := extract(body["chains"]); len(got) > 0 {
 					mp.chains = mp.chains[:0]
-					for _, chain := range got {
-						if s, ok := chain.(string); ok {
-							mp.chains = append(mp.chains, s)
-						}
-					}
+					mp.chains = append(mp.chains, got...)
 					mp.created = true
 				}
 				_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
