@@ -25,6 +25,7 @@ type KeyEntry struct {
 	PrivateKey       []byte     `json:"private_key"`
 	CompressedPubKey []byte     `json:"compressed_pub_key"`
 	EVMAddress       string     `json:"evm_address"`
+	Chains           []string   `json:"chains"`
 	Source           string     `json:"source"`
 	CreatedAt        time.Time  `json:"created_at"`
 	ImportedAt       *time.Time `json:"imported_at,omitempty"`

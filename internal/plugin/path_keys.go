@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
@@ -11,6 +12,7 @@ import (
 	"github.com/hashicorp/vault/sdk/logical"
 
 	"github.com/ryan-truong/kms-wrapper/internal/keypath"
+	"github.com/ryan-truong/kms-wrapper/pkg/types"
 )
 
 // keyStoragePrefix is the storage namespace under which KeyEntry records live.
@@ -21,6 +23,10 @@ func (b *backend) pathsKeys() []*framework.Path {
 		"name": {
 			Type:        framework.TypeString,
 			Description: "Key name. May contain `/` to support hierarchical multi-tenant naming (project/chain/user).",
+		},
+		"chains": {
+			Type:        framework.TypeString,
+			Description: "Comma-separated signing chains to persist with the key.",
 		},
 	}
 	return []*framework.Path{
@@ -83,12 +89,24 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
 	}
 
+	chains, err := requestChains(data)
+	if err != nil {
+		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
+	}
+	parsedChains, err := types.ParseChains(chains)
+	if err != nil {
+		return logical.ErrorResponse("%s", err.Error()), logical.ErrInvalidRequest
+	}
+
 	// Idempotent: if the key already exists, return its current info without regenerating.
 	existing, err := b.loadKey(ctx, req, name)
 	if err != nil {
 		return nil, err
 	}
 	if existing != nil {
+		if !sameChainSet(existing.Chains, chainsToStrings(parsedChains)) {
+			return logical.ErrorResponse("chains mismatch on idempotent create"), logical.ErrInvalidRequest
+		}
 		return keyInfoResponse(existing), nil
 	}
 
@@ -100,6 +118,7 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 		PrivateKey:       crypto.FromECDSA(priv),
 		CompressedPubKey: crypto.CompressPubkey(&priv.PublicKey),
 		EVMAddress:       crypto.PubkeyToAddress(priv.PublicKey).Hex(),
+		Chains:           chainsToStrings(parsedChains),
 		Source:           "generated",
 		CreatedAt:        time.Now().UTC(),
 	}
@@ -157,7 +176,6 @@ func (b *backend) handleListKeys(ctx context.Context, req *logical.Request, data
 	return logical.ListResponse(names), nil
 }
 
-
 func (b *backend) loadKey(ctx context.Context, req *logical.Request, name string) (*KeyEntry, error) {
 	raw, err := req.Storage.Get(ctx, keyStoragePrefix+name)
 	if err != nil {
@@ -181,11 +199,70 @@ func (b *backend) storeKey(ctx context.Context, req *logical.Request, name strin
 	return req.Storage.Put(ctx, storageEntry)
 }
 
+func requestChains(data *framework.FieldData) ([]string, error) {
+	if data == nil {
+		return nil, fmt.Errorf("chains is required and must be a non-empty subset of [evm, cosmos]")
+	}
+	raw, ok := data.GetOk("chains")
+	if !ok {
+		return nil, fmt.Errorf("chains is required and must be a non-empty subset of [evm, cosmos]")
+	}
+	switch v := raw.(type) {
+	case string:
+		return strings.Split(v, ","), nil
+	case []string:
+		return v, nil
+	case []interface{}:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			s, ok := item.(string)
+			if !ok {
+				return nil, fmt.Errorf("chains is required and must be a non-empty subset of [evm, cosmos]")
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("chains is required and must be a non-empty subset of [evm, cosmos]")
+	}
+}
+
+func chainsToStrings(chains []types.Chain) []string {
+	out := make([]string, 0, len(chains))
+	for _, c := range chains {
+		out = append(out, string(c))
+	}
+	return out
+}
+
+func sameChainSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	counts := make(map[string]int, len(a))
+	for _, chain := range a {
+		counts[chain]++
+	}
+	for _, chain := range b {
+		n, ok := counts[chain]
+		if !ok {
+			return false
+		}
+		if n == 1 {
+			delete(counts, chain)
+			continue
+		}
+		counts[chain] = n - 1
+	}
+	return len(counts) == 0
+}
+
 // keyInfoResponse returns the public-safe view of a KeyEntry — never the private key.
 func keyInfoResponse(entry *KeyEntry) *logical.Response {
 	data := map[string]interface{}{
 		"compressed_pub_key": base64.StdEncoding.EncodeToString(entry.CompressedPubKey),
 		"evm_address":        entry.EVMAddress,
+		"chains":             append([]string(nil), entry.Chains...),
 		"source":             entry.Source,
 		"created_at":         entry.CreatedAt.Format(time.RFC3339Nano),
 	}

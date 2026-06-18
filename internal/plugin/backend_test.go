@@ -28,6 +28,9 @@ func writeKey(t *testing.T, b *backend, storage logical.Storage, name string) *l
 		Operation: logical.CreateOperation,
 		Path:      "keys/" + name,
 		Storage:   storage,
+		Data: map[string]interface{}{
+			"chains": "evm",
+		},
 	})
 	if err != nil {
 		t.Fatalf("create key %q: %v", name, err)
