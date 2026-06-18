@@ -14,7 +14,7 @@ import (
 
 type Vault interface {
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
-	Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error)
+	Sign(ctx context.Context, path string, hash []byte, chain string) (r, s *big.Int, err error)
 }
 
 type Signer struct {
@@ -71,7 +71,7 @@ func (s *Signer) SignEIP712Digest(ctx context.Context, keyPath string, digest []
 }
 
 func (s *Signer) signWithRecovery(ctx context.Context, keyPath string, hash []byte) ([]byte, error) {
-	r, ss, err := s.vault.Sign(ctx, keyPath, hash)
+	r, ss, err := s.vault.Sign(ctx, keyPath, hash, "evm")
 	if err != nil {
 		return nil, err
 	}

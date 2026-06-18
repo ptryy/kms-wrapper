@@ -16,10 +16,22 @@ func (m mockVault) GetPublicKey(_ context.Context, _ string) ([]byte, error) {
 	key, _ := crypto.ToECDSA(m.priv)
 	return crypto.FromECDSAPub(&key.PublicKey), nil
 }
-func (m mockVault) Sign(_ context.Context, _ string, hash []byte) (*big.Int, *big.Int, error) {
+func (m mockVault) Sign(_ context.Context, _ string, hash []byte, chain string) (*big.Int, *big.Int, error) {
+	if chain != "evm" {
+		return nil, nil, &unexpectedChainError{got: chain, want: "evm"}
+	}
 	key, _ := crypto.ToECDSA(m.priv)
 	sig, err := crypto.Sign(hash, key)
 	return new(big.Int).SetBytes(sig[:32]), new(big.Int).SetBytes(sig[32:64]), err
+}
+
+type unexpectedChainError struct {
+	got  string
+	want string
+}
+
+func (e *unexpectedChainError) Error() string {
+	return "unexpected chain: got " + e.got + " want " + e.want
 }
 
 func TestDeriveEVMAddressAndSigners(t *testing.T) {

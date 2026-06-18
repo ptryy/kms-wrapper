@@ -21,7 +21,10 @@ func (v fixedKeyVault) GetPublicKey(_ context.Context, _ string) ([]byte, error)
 	k, _ := crypto.ToECDSA(v.priv)
 	return crypto.FromECDSAPub(&k.PublicKey), nil
 }
-func (v fixedKeyVault) Sign(_ context.Context, _ string, h []byte) (*big.Int, *big.Int, error) {
+func (v fixedKeyVault) Sign(_ context.Context, _ string, h []byte, chain string) (*big.Int, *big.Int, error) {
+	if chain != "cosmos" {
+		return nil, nil, errors.New("unexpected chain: " + chain)
+	}
 	k, _ := crypto.ToECDSA(v.priv)
 	s, err := crypto.Sign(h, k)
 	return new(big.Int).SetBytes(s[:32]), new(big.Int).SetBytes(s[32:64]), err
