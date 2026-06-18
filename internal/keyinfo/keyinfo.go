@@ -22,7 +22,7 @@ type KeyStore interface {
 // An empty hrp defaults to DefaultHRP. Errors from the underlying store
 // (notably types.ErrNotFound) are returned unchanged so callers can
 // errors.Is-check them.
-func For(ctx context.Context, store KeyStore, path, hrp string) (types.KeyInfo, error) {
+func For(ctx context.Context, store KeyStore, path, hrp string, chains []types.Chain) (types.KeyInfo, error) {
 	if hrp == "" {
 		hrp = DefaultHRP
 	}
@@ -30,18 +30,24 @@ func For(ctx context.Context, store KeyStore, path, hrp string) (types.KeyInfo, 
 	if err != nil {
 		return types.KeyInfo{}, err
 	}
-	evmAddr, err := evmsigner.DeriveEVMAddress(pub)
-	if err != nil {
-		return types.KeyInfo{}, err
+	info := types.KeyInfo{
+		Path:         path,
+		PublicKeyHex: hex.EncodeToString(pub),
+		Chains:       chains,
 	}
-	cosmosAddr, err := cosmossigner.DeriveCosmosAddress(pub, hrp)
-	if err != nil {
-		return types.KeyInfo{}, err
+	if types.ChainsContain(chains, types.ChainEVM) {
+		evmAddr, err := evmsigner.DeriveEVMAddress(pub)
+		if err != nil {
+			return types.KeyInfo{}, err
+		}
+		info.EVMAddress = evmAddr
 	}
-	return types.KeyInfo{
-		Path:          path,
-		PublicKeyHex:  hex.EncodeToString(pub),
-		EVMAddress:    evmAddr,
-		CosmosAddress: cosmosAddr,
-	}, nil
+	if types.ChainsContain(chains, types.ChainCosmos) {
+		cosmosAddr, err := cosmossigner.DeriveCosmosAddress(pub, hrp)
+		if err != nil {
+			return types.KeyInfo{}, err
+		}
+		info.CosmosAddress = cosmosAddr
+	}
+	return info, nil
 }
