@@ -241,12 +241,14 @@ func (c *Client) Health() error {
 // CreateKey requests the kms-vault-plugin to generate a new secp256k1 key at
 // the given path. Idempotent — plugin returns the existing key info if it
 // already exists.
-func (c *Client) CreateKey(ctx context.Context, path string) error {
+func (c *Client) CreateKey(ctx context.Context, path string, chains []string) error {
 	if err := ValidateKeyPath(path); err != nil {
 		return err
 	}
 	start := time.Now()
-	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{})
+	_, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{
+		"chains": chains,
+	})
 	mapped := mapVaultErr(path, err)
 	c.recordCall("create", start, mapped)
 	return mapped
@@ -305,7 +307,7 @@ func (c *Client) GetPublicKey(ctx context.Context, path string) ([]byte, error) 
 
 // Sign submits a pre-hashed 32-byte input to the kms-vault-plugin and returns
 // the (r, s) components of the resulting low-S-normalised secp256k1 signature.
-func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error) {
+func (c *Client) Sign(ctx context.Context, path string, hash []byte, chain string) (r, s *big.Int, err error) {
 	if err := ValidateKeyPath(path); err != nil {
 		return nil, nil, err
 	}
@@ -315,6 +317,7 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.
 	start := time.Now()
 	secret, err := c.api.Logical().WriteWithContext(ctx, ToSignPath(path), map[string]any{
 		"input": hex.EncodeToString(hash),
+		"chain": chain,
 	})
 	if err != nil {
 		mapped := mapVaultErr(path, err)
@@ -339,6 +342,55 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte) (r, s *big.
 		return nil, nil, fmt.Errorf("decode signature s: %w", err)
 	}
 	return new(big.Int).SetBytes(rBytes), new(big.Int).SetBytes(sBytes), nil
+}
+
+// GetKeyChains reads the persisted chain list for a key path.
+func (c *Client) GetKeyChains(ctx context.Context, path string) ([]string, error) {
+	if err := ValidateKeyPath(path); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	secret, err := c.api.Logical().ReadWithContext(ctx, ToVaultPath(path))
+	if err != nil {
+		mapped := mapVaultErr(path, err)
+		c.recordCall("read", start, mapped)
+		return nil, mapped
+	}
+	c.recordCall("read", start, nil)
+	if secret == nil || secret.Data == nil {
+		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+	}
+	chains, err := decodeStringSlice(secret.Data["chains"])
+	if err != nil {
+		return nil, fmt.Errorf("decode chains: %w", err)
+	}
+	return chains, nil
+}
+
+// UpdateKeyChains adds chains to the persisted list and returns the canonical
+// list reported by the plugin.
+func (c *Client) UpdateKeyChains(ctx context.Context, path string, addChains []string) ([]string, error) {
+	if err := ValidateKeyPath(path); err != nil {
+		return nil, err
+	}
+	start := time.Now()
+	secret, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path)+"/update-chains", map[string]any{
+		"add_chains": addChains,
+	})
+	if err != nil {
+		mapped := mapVaultErr(path, err)
+		c.recordCall("update_chains", start, mapped)
+		return nil, mapped
+	}
+	c.recordCall("update_chains", start, nil)
+	if secret == nil || secret.Data == nil {
+		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+	}
+	chains, err := decodeStringSlice(secret.Data["chains"])
+	if err != nil {
+		return nil, fmt.Errorf("decode chains: %w", err)
+	}
+	return chains, nil
 }
 
 // ListKeys lists key names under the given prefix via the plugin's LIST endpoint.
@@ -393,4 +445,27 @@ func mapVaultErr(path string, err error) error {
 		}
 	}
 	return err
+}
+
+func decodeStringSlice(v any) ([]string, error) {
+	switch xs := v.(type) {
+	case []string:
+		out := make([]string, len(xs))
+		copy(out, xs)
+		return out, nil
+	case []any:
+		out := make([]string, 0, len(xs))
+		for _, item := range xs {
+			s, ok := item.(string)
+			if !ok {
+				return nil, errors.New("chains contains non-string value")
+			}
+			out = append(out, s)
+		}
+		return out, nil
+	case nil:
+		return nil, errors.New("missing chains field")
+	default:
+		return nil, fmt.Errorf("unexpected chains type %T", v)
+	}
 }
