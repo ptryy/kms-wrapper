@@ -62,7 +62,7 @@ func (k keyStoreMock) GetPublicKey(ctx context.Context, path string) ([]byte, er
 }
 func (k keyStoreMock) GetKeyChains(ctx context.Context, path string) ([]string, error) {
 	if k.getKeyChains == nil {
-		return nil, errors.New("GetKeyChains not stubbed")
+		return []string{"evm", "cosmos"}, nil
 	}
 	return k.getKeyChains(ctx, path)
 }

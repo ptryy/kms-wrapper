@@ -112,6 +112,7 @@ type Server struct {
 	principals     *principalLimiters
 	healthLimiters *principalLimiters
 	healthResp     healthCache
+	chains         *chainsCache
 	serverNonce    []byte
 	trustedProxies []*net.IPNet
 }
@@ -168,6 +169,7 @@ func NewOrFail(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner 
 		principals:     newPrincipalLimiters(rate.Limit(rl), burst, 10000),
 		healthLimiters: newPrincipalLimiters(rate.Limit(healthRate), healthBurst, 10000),
 		serverNonce:    nonce,
+		chains:         newChainsCache(cfg.Gateway.ChainsCacheTTL),
 		trustedProxies: trusted,
 	}
 	s.server = &http.Server{
@@ -542,6 +544,10 @@ func (s *Server) signEVMRawTx(w http.ResponseWriter, r *http.Request, req *appty
 		writeError(w, http.StatusBadRequest, "raw_tx must be hex")
 		return
 	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
+		return
+	}
 	out, err := s.evm.SignRawTx(r.Context(), req.KeyPath, big.NewInt(req.ChainID), raw)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "EVM raw tx signing failed", "error", err, "key_path", req.KeyPath)
@@ -572,6 +578,10 @@ func (s *Server) signEVMPersonal(w http.ResponseWriter, r *http.Request, req *ap
 		writeError(w, http.StatusBadRequest, "personal_message must be hex")
 		return
 	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
+		return
+	}
 	sig, err := s.evm.SignPersonalMessage(r.Context(), req.KeyPath, msg)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "personal message signing failed", "error", err, "key_path", req.KeyPath)
@@ -595,6 +605,10 @@ func (s *Server) signEVMEIP712(w http.ResponseWriter, r *http.Request, req *appt
 	}
 	if len(digest) != 32 {
 		writeError(w, http.StatusBadRequest, "eip712_digest must be exactly 32 bytes")
+		return
+	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
 		return
 	}
 	sig, err := s.evm.SignEIP712Digest(r.Context(), req.KeyPath, digest)
@@ -642,9 +656,17 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 		var doc []byte
 		doc, err = base64.StdEncoding.DecodeString(req.SignDoc)
 		if err == nil {
+			allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainCosmos)
+			if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainCosmos, allowed, status, authzErr) {
+				return
+			}
 			sig, pub, err = s.cosmos.SignDirect(r.Context(), req.KeyPath, doc)
 		}
 	case "AMINO_JSON":
+		allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainCosmos)
+		if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainCosmos, allowed, status, authzErr) {
+			return
+		}
 		sig, pub, err = s.cosmos.SignAmino(r.Context(), req.KeyPath, []byte(req.SignDoc))
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported sign_mode")

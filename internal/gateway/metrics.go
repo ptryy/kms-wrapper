@@ -31,6 +31,11 @@ var (
 		Buckets: prometheus.DefBuckets,
 	}, []string{"chain"})
 
+	kmsChainAuthzDenialsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "kms_chain_authz_denials_total",
+		Help: "Total gateway-side chain authorization denials, by attempted chain.",
+	}, []string{"chain"})
+
 	kmsRateLimitRejectionsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "kms_rate_limit_rejections_total",
 		Help: "Total HTTP 429 responses by matched route.",
@@ -63,6 +68,7 @@ func init() {
 		kmsHTTPRequestsTotal,
 		kmsHTTPRequestDuration,
 		kmsSigningDuration,
+		kmsChainAuthzDenialsTotal,
 		kmsRateLimitRejectionsTotal,
 		kmsVaultCallsTotal,
 		kmsVaultCallDuration,

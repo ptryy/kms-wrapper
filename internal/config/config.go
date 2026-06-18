@@ -7,6 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -17,18 +18,19 @@ type Config struct {
 		Token string `mapstructure:"token"`
 	} `mapstructure:"vault"`
 	Gateway struct {
-		Addr             string   `mapstructure:"addr"`
-		Token            string   `mapstructure:"token"`
-		TLSCertFile      string   `mapstructure:"tls_cert_file"`
-		TLSKeyFile       string   `mapstructure:"tls_key_file"`
-		RateLimit        float64  `mapstructure:"rate_limit"`
-		RateBurst        int      `mapstructure:"rate_burst"`
-		HealthRateLimit  float64  `mapstructure:"health_rate_limit"`
-		HealthRateBurst  int      `mapstructure:"health_rate_burst"`
-		TrustedProxies   []string `mapstructure:"trusted_proxies"`
-		PublicURL        string   `mapstructure:"public_url"`
-		SwaggerEnabled   bool     `mapstructure:"swagger_enabled"`
-		SwaggerAuth      bool     `mapstructure:"swagger_auth"`
+		Addr            string        `mapstructure:"addr"`
+		Token           string        `mapstructure:"token"`
+		TLSCertFile     string        `mapstructure:"tls_cert_file"`
+		TLSKeyFile      string        `mapstructure:"tls_key_file"`
+		RateLimit       float64       `mapstructure:"rate_limit"`
+		RateBurst       int           `mapstructure:"rate_burst"`
+		HealthRateLimit float64       `mapstructure:"health_rate_limit"`
+		HealthRateBurst int           `mapstructure:"health_rate_burst"`
+		ChainsCacheTTL  time.Duration `mapstructure:"chains_cache_ttl"`
+		TrustedProxies  []string      `mapstructure:"trusted_proxies"`
+		PublicURL       string        `mapstructure:"public_url"`
+		SwaggerEnabled  bool          `mapstructure:"swagger_enabled"`
+		SwaggerAuth     bool          `mapstructure:"swagger_auth"`
 	} `mapstructure:"gateway"`
 	LogLevel string `mapstructure:"log_level"`
 }
@@ -40,6 +42,7 @@ func Default() Config {
 	cfg.Gateway.RateBurst = 20
 	cfg.Gateway.HealthRateLimit = 10
 	cfg.Gateway.HealthRateBurst = 5
+	cfg.Gateway.ChainsCacheTTL = 30 * time.Second
 	cfg.Gateway.SwaggerEnabled = true
 	cfg.Gateway.SwaggerAuth = true
 	cfg.LogLevel = "info"
@@ -61,6 +64,7 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	v.SetDefault("gateway.rate_burst", 20)
 	v.SetDefault("gateway.health_rate_limit", 10)
 	v.SetDefault("gateway.health_rate_burst", 5)
+	v.SetDefault("gateway.chains_cache_ttl", 30*time.Second)
 	v.SetDefault("gateway.swagger_enabled", true)
 	v.SetDefault("gateway.swagger_auth", true)
 	v.SetDefault("log_level", "info")
@@ -74,6 +78,7 @@ func Load(path string, onWarn func(string)) (Config, error) {
 	_ = v.BindEnv("gateway.rate_burst", "KMS_GATEWAY_RATE_BURST")
 	_ = v.BindEnv("gateway.health_rate_limit", "KMS_GATEWAY_HEALTH_RATE_LIMIT")
 	_ = v.BindEnv("gateway.health_rate_burst", "KMS_GATEWAY_HEALTH_RATE_BURST")
+	_ = v.BindEnv("gateway.chains_cache_ttl", "KMS_GATEWAY_CHAINS_CACHE_TTL")
 	_ = v.BindEnv("gateway.public_url", "KMS_GATEWAY_PUBLIC_URL")
 	_ = v.BindEnv("gateway.swagger_enabled", "KMS_GATEWAY_SWAGGER_ENABLED")
 	_ = v.BindEnv("gateway.swagger_auth", "KMS_GATEWAY_SWAGGER_AUTH")
