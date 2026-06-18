@@ -129,14 +129,16 @@ type SignResponse struct {
 }
 
 type KeyInfo struct {
-	Path          string `json:"path"`
-	PublicKeyHex  string `json:"public_key_hex"`
-	EVMAddress    string `json:"evm_address"`
-	CosmosAddress string `json:"cosmos_address"`
+	Path          string  `json:"path"`
+	PublicKeyHex  string  `json:"public_key_hex"`
+	EVMAddress    string  `json:"evm_address,omitempty"`
+	CosmosAddress string  `json:"cosmos_address,omitempty"`
+	Chains        []Chain `json:"chains"`
 }
 
 type KeyCreateRequest struct {
-	Path string `json:"path" binding:"required" example:"proj-a/prod/alice"`
+	Path   string  `json:"path" binding:"required" example:"proj-a/prod/alice"`
+	Chains []Chain `json:"chains" example:"evm,cosmos"`
 }
 
 type KeyCreateResponse struct {
@@ -144,8 +146,17 @@ type KeyCreateResponse struct {
 	AlreadyExisted bool `json:"already_existed" example:"false"`
 }
 
+type KeyListEntry struct {
+	Path   string  `json:"path"`
+	Chains []Chain `json:"chains"` // null = tag read failed (see resilient list)
+}
+
+type KeyUpdateChainsRequest struct {
+	AddChains []Chain `json:"add_chains" example:"cosmos"`
+}
+
 type KeyListResponse struct {
-	Keys       []string `json:"keys" example:"prod/alice,staging/bob"`
-	Count      int      `json:"count" example:"2"`
-	NextCursor string   `json:"next_cursor"`
+	Keys       []KeyListEntry `json:"keys"`
+	Count      int            `json:"count" example:"2"`
+	NextCursor string         `json:"next_cursor"`
 }
