@@ -31,11 +31,11 @@ func TestForReturnsDerivedAddresses(t *testing.T) {
 		t.Fatalf("derive cosmos addr: %v", err)
 	}
 
-	info, err := For(context.Background(), fakeStore{pub: pub}, "proj-a/evm/alice", "")
+	info, err := For(context.Background(), fakeStore{pub: pub}, "proj-a/prod/alice", "")
 	if err != nil {
 		t.Fatalf("For err=%v", err)
 	}
-	if info.Path != "proj-a/evm/alice" {
+	if info.Path != "proj-a/prod/alice" {
 		t.Fatalf("path=%q", info.Path)
 	}
 	if info.PublicKeyHex != hex.EncodeToString(pub) {
@@ -56,7 +56,7 @@ func TestForRespectsHRP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("derive cosmos: %v", err)
 	}
-	info, err := For(context.Background(), fakeStore{pub: pub}, "proj/cosmos/bob", "osmo")
+	info, err := For(context.Background(), fakeStore{pub: pub}, "proj/prod/bob", "osmo")
 	if err != nil {
 		t.Fatalf("For err=%v", err)
 	}
@@ -66,8 +66,8 @@ func TestForRespectsHRP(t *testing.T) {
 }
 
 func TestForPropagatesNotFound(t *testing.T) {
-	wrapped := fmt.Errorf("%w: key not found: proj/evm/ghost", types.ErrNotFound)
-	_, err := For(context.Background(), fakeStore{err: wrapped}, "proj/evm/ghost", "")
+	wrapped := fmt.Errorf("%w: key not found: proj/prod/ghost", types.ErrNotFound)
+	_, err := For(context.Background(), fakeStore{err: wrapped}, "proj/prod/ghost", "")
 	if err == nil || !errors.Is(err, types.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}

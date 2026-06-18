@@ -673,7 +673,7 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 }
 
 // createKey godoc
-// @Summary Create a Vault Transit key
+// @Summary Create a KMS key
 // @Tags keys
 // @Accept json
 // @Produce json
@@ -728,10 +728,10 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // showKey godoc
-// @Summary Show a Vault Transit key
+// @Summary Show a KMS key
 // @Tags keys
 // @Produce json
-// @Param path query string true "Key path (format: {project}/{chain}/{username})" example(proj-a/evm/alice)
+// @Param path query string true "Key path (format: {project}/{environment}/{username})" example(proj-a/prod/alice)
 // @Success 200 {object} apptypes.KeyInfo
 // @Failure 400 {object} apptypes.ErrorResponse
 // @Failure 401 {object} apptypes.ErrorResponse
@@ -760,7 +760,7 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 }
 
 // listKeys godoc
-// @Summary List Vault Transit keys by prefix
+// @Summary List KMS keys by prefix
 // @Tags keys
 // @Produce json
 // @Param prefix query string false "Optional path prefix" example(proj-a/)

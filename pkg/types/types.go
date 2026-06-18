@@ -20,23 +20,23 @@ type EVMSignRequest struct {
 }
 
 type EVMSignRawTxRequest struct {
-	KeyPath string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	ChainID int64  `json:"chain_id" binding:"required" minimum:"1" example:"1"`
 	RawTx   string `json:"raw_tx" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
 }
 
 type EVMSignPersonalMessageRequest struct {
-	KeyPath         string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath         string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	PersonalMessage string `json:"personal_message" binding:"required" pattern:"^(0x)?[0-9a-fA-F]+$"`
 }
 
 type EVMSignEIP712Request struct {
-	KeyPath      string `json:"key_path" binding:"required" example:"proj-a/evm/alice"`
+	KeyPath      string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	EIP712Digest string `json:"eip712_digest" binding:"required" pattern:"^(0x)?[0-9a-fA-F]{64}$"`
 }
 
 type CosmosSignRequest struct {
-	KeyPath  string `json:"key_path" binding:"required"`
+	KeyPath  string `json:"key_path" binding:"required" example:"proj-a/prod/alice"`
 	HRP      string `json:"hrp,omitempty"`
 	SignMode string `json:"sign_mode" binding:"required" enums:"DIRECT,AMINO_JSON"`
 	// SignDoc is base64 protobuf bytes when sign_mode=DIRECT and raw JSON when sign_mode=AMINO_JSON.
@@ -86,7 +86,7 @@ type KeyInfo struct {
 }
 
 type KeyCreateRequest struct {
-	Path string `json:"path" binding:"required" example:"proj-a/evm/alice"`
+	Path string `json:"path" binding:"required" example:"proj-a/prod/alice"`
 }
 
 type KeyCreateResponse struct {
@@ -95,7 +95,7 @@ type KeyCreateResponse struct {
 }
 
 type KeyListResponse struct {
-	Keys       []string `json:"keys" example:"evm/alice,cosmos/bob"`
+	Keys       []string `json:"keys" example:"prod/alice,staging/bob"`
 	Count      int      `json:"count" example:"2"`
 	NextCursor string   `json:"next_cursor"`
 }

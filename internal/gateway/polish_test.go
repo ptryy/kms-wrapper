@@ -37,7 +37,7 @@ func gatewayWithCosmos(t *testing.T, cs CosmosSigner) http.Handler {
 func TestSignCosmosDuplicateKeysReturns400(t *testing.T) {
 	dupErr := fmt.Errorf("duplicate key in amino sign doc: a: %w", apptypes.ErrBadRequest)
 	h := gatewayWithCosmos(t, erroringCosmos{err: dupErr})
-	body := []byte(`{"key_path":"proj/cosmos/alice","sign_mode":"AMINO_JSON","sign_doc":"{}"}`)
+	body := []byte(`{"key_path":"proj/prod/alice","sign_mode":"AMINO_JSON","sign_doc":"{}"}`)
 	rr := doRequest(h, http.MethodPost, "/v1/sign/cosmos", body, true)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
@@ -49,7 +49,7 @@ func TestSignCosmosDuplicateKeysReturns400(t *testing.T) {
 
 func TestSignCosmosGenericSignerErrorReturns500(t *testing.T) {
 	h := gatewayWithCosmos(t, erroringCosmos{err: errors.New("boom")})
-	body := []byte(`{"key_path":"proj/cosmos/alice","sign_mode":"AMINO_JSON","sign_doc":"{}"}`)
+	body := []byte(`{"key_path":"proj/prod/alice","sign_mode":"AMINO_JSON","sign_doc":"{}"}`)
 	rr := doRequest(h, http.MethodPost, "/v1/sign/cosmos", body, true)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
@@ -59,9 +59,9 @@ func TestSignCosmosGenericSignerErrorReturns500(t *testing.T) {
 func TestRoutesDualMounted(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	bare := doRequest(h, http.MethodPost, "/sign/evm",
-		[]byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`), true)
+		[]byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`), true)
 	v1 := doRequest(h, http.MethodPost, "/v1/sign/evm",
-		[]byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`), true)
+		[]byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`), true)
 	if bare.Code != http.StatusOK || v1.Code != http.StatusOK {
 		t.Fatalf("bare=%d v1=%d bare-body=%s v1-body=%s", bare.Code, v1.Code, bare.Body.String(), v1.Body.String())
 	}
@@ -82,7 +82,7 @@ func TestRoutesDualMounted(t *testing.T) {
 func TestEVMDiscriminatorMissing(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	rr := doRequest(h, http.MethodPost, "/v1/sign/evm",
-		[]byte(`{"key_path":"proj/evm/alice","personal_message":"0x6869"}`), true)
+		[]byte(`{"key_path":"proj/prod/alice","personal_message":"0x6869"}`), true)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -94,7 +94,7 @@ func TestEVMDiscriminatorMissing(t *testing.T) {
 func TestEVMDiscriminatorMismatch(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
 	rr := doRequest(h, http.MethodPost, "/v1/sign/evm",
-		[]byte(`{"type":"raw_tx","key_path":"proj/evm/alice","personal_message":"0x6869"}`), true)
+		[]byte(`{"type":"raw_tx","key_path":"proj/prod/alice","personal_message":"0x6869"}`), true)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -194,7 +194,7 @@ func TestKeysIdempotentReturns200(t *testing.T) {
 		createKey:    func(_ context.Context, _ string) error { return nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/v1/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/v1/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("idempotent re-create should be 200, got %d body=%s", rr.Code, rr.Body.String())
 	}

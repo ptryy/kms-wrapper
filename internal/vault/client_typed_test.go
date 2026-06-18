@@ -46,7 +46,7 @@ func writeVaultJSONError(w http.ResponseWriter, status int, msg string) {
 }
 
 func TestMapVaultErrViaResponseError(t *testing.T) {
-	const keyPath = "proj/evm/alice"
+	const keyPath = "proj/prod/alice"
 
 	cases := []struct {
 		name   string
@@ -94,7 +94,7 @@ func TestGetPublicKeyCachesPerPath(t *testing.T) {
 	})
 	defer cleanup()
 
-	const path = "proj/evm/alice"
+	const path = "proj/prod/alice"
 	a, err := c.GetPublicKey(context.Background(), path)
 	if err != nil {
 		t.Fatalf("first GetPublicKey: %v", err)
@@ -111,7 +111,7 @@ func TestGetPublicKeyCachesPerPath(t *testing.T) {
 	}
 
 	// Different path triggers another fetch.
-	if _, err := c.GetPublicKey(context.Background(), "proj/cosmos/bob"); err != nil {
+	if _, err := c.GetPublicKey(context.Background(), "proj/prod/bob"); err != nil {
 		t.Fatalf("second-path GetPublicKey: %v", err)
 	}
 	if got := calls.Load(); got != 2 {

@@ -67,7 +67,7 @@ func TestSignAminoRejectsDuplicateKeys(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, err := s.SignAmino(context.Background(), "proj/cosmos/alice", []byte(tc.input))
+			_, _, err := s.SignAmino(context.Background(), "proj/prod/alice", []byte(tc.input))
 			if err == nil {
 				t.Fatal("expected duplicate-key error")
 			}
@@ -78,7 +78,7 @@ func TestSignAminoRejectsDuplicateKeys(t *testing.T) {
 	}
 
 	// Happy path still works.
-	if _, _, err := s.SignAmino(context.Background(), "proj/cosmos/alice", []byte(`{"a":1,"b":2}`)); err != nil {
+	if _, _, err := s.SignAmino(context.Background(), "proj/prod/alice", []byte(`{"a":1,"b":2}`)); err != nil {
 		t.Fatalf("clean input should sign: %v", err)
 	}
 }

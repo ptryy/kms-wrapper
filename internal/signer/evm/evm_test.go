@@ -32,15 +32,15 @@ func TestDeriveEVMAddressAndSigners(t *testing.T) {
 		t.Fatalf("addr=%s err=%v", addr, err)
 	}
 	ctx := context.Background()
-	sig, err := signer.SignPersonalMessage(ctx, "proj/evm/alice", []byte("hello"))
+	sig, err := signer.SignPersonalMessage(ctx, "proj/prod/alice", []byte("hello"))
 	if err != nil || len(sig) != 65 {
 		t.Fatalf("personal sig len=%d err=%v", len(sig), err)
 	}
-	eipSig, err := signer.SignEIP712Digest(ctx, "proj/evm/alice", bytes.Repeat([]byte{1}, 32))
+	eipSig, err := signer.SignEIP712Digest(ctx, "proj/prod/alice", bytes.Repeat([]byte{1}, 32))
 	if err != nil || len(eipSig) != 65 {
 		t.Fatalf("eip712 sig len=%d err=%v", len(eipSig), err)
 	}
-	if _, err := signer.SignEIP712Digest(ctx, "proj/evm/alice", []byte{1}); err == nil || err.Error() != "EIP-712 digest must be 32 bytes" {
+	if _, err := signer.SignEIP712Digest(ctx, "proj/prod/alice", []byte{1}); err == nil || err.Error() != "EIP-712 digest must be 32 bytes" {
 		t.Fatalf("unexpected digest error %v", err)
 	}
 }
@@ -52,7 +52,7 @@ func TestSignRawTx(t *testing.T) {
 	unsigned := ethtypes.NewTransaction(0, crypto.PubkeyToAddress(key.PublicKey), big.NewInt(1), 21000, big.NewInt(1_000_000_000), nil)
 	raw, _ := unsigned.MarshalBinary()
 	ctx := context.Background()
-	signedRaw, err := signer.SignRawTx(ctx, "proj/evm/alice", big.NewInt(1), raw)
+	signedRaw, err := signer.SignRawTx(ctx, "proj/prod/alice", big.NewInt(1), raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestSignRawTx(t *testing.T) {
 	if signed.ChainId().Cmp(big.NewInt(1)) != 0 {
 		t.Fatalf("chain id=%s", signed.ChainId())
 	}
-	if _, err := signer.SignRawTx(ctx, "proj/evm/alice", big.NewInt(1), []byte("bad")); err == nil || err.Error() != "invalid RLP encoding" {
+	if _, err := signer.SignRawTx(ctx, "proj/prod/alice", big.NewInt(1), []byte("bad")); err == nil || err.Error() != "invalid RLP encoding" {
 		t.Fatalf("unexpected rlp err %v", err)
 	}
 }

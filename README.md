@@ -29,7 +29,7 @@ make dev-up
 
 # 3. Use the CLI to create a key and start the gateway.
 export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=root KMS_GATEWAY_TOKEN=dev
-go run ./cmd/kms-wrapper keys create --path proj-a/evm/alice
+go run ./cmd/kms-wrapper keys create --path proj-a/prod/alice
 go run ./cmd/kms-wrapper serve
 ```
 
@@ -47,17 +47,17 @@ docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vaul
   vault plugin info -version="" secret kms-vault-plugin
 
 docker compose exec -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN=root vault \
-  vault write -force kms/keys/proj-a/evm/alice
+  vault write -force kms/keys/proj-a/prod/alice
 ```
 
 ## Key paths
 
-Logical key paths are `{project}/{chain}/{username}` using lowercase `[a-z0-9_-]` segments.
+Logical key paths are `{project}/{environment}/{username}` using lowercase `[a-z0-9_-]` segments.
 
-- Read / write / delete: `kms/keys/<project>/<chain>/<username>`
-- Sign: `kms/sign/<project>/<chain>/<username>`
+- Read / write / delete: `kms/keys/<project>/<environment>/<username>`
+- Sign: `kms/sign/<project>/<environment>/<username>`
 
-Reserved chain identifiers are `evm`, `eth`, `mantra`, `cosmos`, and `osmosis`; unknown values are allowed with a warning. See `vault/policy-project.hcl` for a sample project-scoped Vault policy.
+The `{environment}` segment is free-form (`[a-z0-9_-]`), e.g. `prod`, `staging`, `dev`. See `vault/policy-project.hcl` for a sample project-scoped Vault policy.
 
 ### Plugin endpoint contract
 
@@ -78,7 +78,7 @@ All other routes require `Authorization: Bearer <KMS_GATEWAY_TOKEN>`.
 `POST /sign/evm`:
 
 ```json
-{"key_path":"proj-a/evm/alice","chain_id":1,"raw_tx":"0x..."}
+{"key_path":"proj-a/prod/alice","chain_id":1,"raw_tx":"0x..."}
 ```
 
 Alternatively use `personal_message` or `eip712_digest`. Responses include `signed_tx` for raw transactions or a `signature` hex string.
@@ -86,7 +86,7 @@ Alternatively use `personal_message` or `eip712_digest`. Responses include `sign
 `POST /sign/cosmos`:
 
 ```json
-{"key_path":"proj-a/mantra/alice","hrp":"mantra","sign_mode":"DIRECT","sign_doc":"<base64>"}
+{"key_path":"proj-a/staging/alice","hrp":"mantra","sign_mode":"DIRECT","sign_doc":"<base64>"}
 ```
 
 Use `sign_mode: "AMINO_JSON"` with a JSON `sign_doc` for legacy amino. Responses include base64 `signature` and compressed `pub_key`.
@@ -97,7 +97,7 @@ The gateway exposes the same key lifecycle as `kms-wrapper keys`. All three requ
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| POST   | `/keys` | Create a secp256k1 Transit key. Idempotent — re-create returns the existing key with `already_existed: true`. |
+| POST   | `/keys` | Create a secp256k1 KMS key. Idempotent — re-create returns the existing key with `already_existed: true`. |
 | GET    | `/keys/info?path=<key-path>` | Show public key (hex), EVM address, and Cosmos bech32 address. |
 | GET    | `/keys?prefix=<prefix>` | List bare key names under prefix; `prefix` optional. |
 
@@ -105,12 +105,12 @@ The gateway exposes the same key lifecycle as `kms-wrapper keys`. All three requ
 # Create
 curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{"path":"proj-a/evm/alice"}' \
+     -d '{"path":"proj-a/prod/alice"}' \
      http://127.0.0.1:8080/keys
 
 # Show
 curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
-     "http://127.0.0.1:8080/keys/info?path=proj-a/evm/alice"
+     "http://127.0.0.1:8080/keys/info?path=proj-a/prod/alice"
 
 # List
 curl -H "Authorization: Bearer $KMS_GATEWAY_TOKEN" \
@@ -145,10 +145,10 @@ For internet-exposed deployments, set `KMS_GATEWAY_SWAGGER_AUTH=true` to require
 ```sh
 kms-wrapper --config ~/.kms-wrapper/config.yaml --log-level info
 kms-wrapper serve
-kms-wrapper keys create --path proj-a/evm/alice
-kms-wrapper keys show --path proj-a/evm/alice
-kms-wrapper sign evm --path proj-a/evm/alice --chain-id 1 --raw-tx 0x...
-kms-wrapper sign cosmos --path proj-a/mantra/alice --hrp mantra --mode DIRECT --sign-doc <base64>
+kms-wrapper keys create --path proj-a/prod/alice
+kms-wrapper keys show --path proj-a/prod/alice
+kms-wrapper sign evm --path proj-a/prod/alice --chain-id 1 --raw-tx 0x...
+kms-wrapper sign cosmos --path proj-a/staging/alice --hrp mantra --mode DIRECT --sign-doc <base64>
 kms-wrapper health
 ```
 

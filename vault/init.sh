@@ -118,17 +118,17 @@ else
   echo "    wrote KMS_VAULT_TOKEN to ${ENV_FILE}"
 
   echo "==> smoke-testing scoped token isolation"
-  if ! vault_cli write -force "kms/keys/proj-a/evm/init-smoke" >/dev/null; then
+  if ! vault_cli write -force "kms/keys/proj-a/prod/init-smoke" >/dev/null; then
     echo "warn: smoke write to proj-a failed using root token (skipping isolation check)" >&2
   else
     # Verify the scoped token can write to proj-a but not proj-b.
     if ! docker compose exec -T -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN="${SCOPED_TOKEN}" \
-        vault vault write -force "kms/keys/proj-a/evm/scoped-smoke" >/dev/null 2>&1; then
+        vault vault write -force "kms/keys/proj-a/prod/scoped-smoke" >/dev/null 2>&1; then
       echo "error: scoped token cannot write to proj-a — check policy globs" >&2
       exit 1
     fi
     if docker compose exec -T -e VAULT_ADDR=http://127.0.0.1:8200 -e VAULT_TOKEN="${SCOPED_TOKEN}" \
-        vault vault write -force "kms/keys/proj-b/evm/should-fail" >/dev/null 2>&1; then
+        vault vault write -force "kms/keys/proj-b/prod/should-fail" >/dev/null 2>&1; then
       echo "error: scoped token unexpectedly succeeded against proj-b — policy too permissive" >&2
       exit 1
     fi

@@ -163,13 +163,13 @@ func TestGatewayAuthHealthAndSign(t *testing.T) {
 		t.Fatalf("unauth code=%d body=%s", rr.Code, rr.Body.String())
 	}
 
-	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`)
 	rr = doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("evm code=%d body=%s", rr.Code, rr.Body.String())
 	}
 
-	body = []byte(`{"key_path":"proj/cosmos/alice","sign_mode":"DIRECT","sign_doc":"` + base64.StdEncoding.EncodeToString([]byte("doc")) + `"}`)
+	body = []byte(`{"key_path":"proj/staging/alice","sign_mode":"DIRECT","sign_doc":"` + base64.StdEncoding.EncodeToString([]byte("doc")) + `"}`)
 	rr = doRequest(h, http.MethodPost, "/sign/cosmos", body, true)
 	var resp map[string]string
 	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
@@ -321,7 +321,7 @@ func TestSwaggerRoutesAreNotRateLimited(t *testing.T) {
 		cfg.Gateway.RateBurst = 1
 	})
 
-	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`)
 	rr := doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected first sign request to succeed, got code=%d body=%s", rr.Code, rr.Body.String())

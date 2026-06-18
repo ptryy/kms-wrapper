@@ -54,13 +54,13 @@ func TestCreateKeyHappyPath(t *testing.T) {
 		},
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	var resp apptypes.KeyCreateResponse
 	decodeJSON(t, rr.Body.Bytes(), &resp)
-	if resp.Path != "proj-a/evm/alice" {
+	if resp.Path != "proj-a/prod/alice" {
 		t.Fatalf("path=%q", resp.Path)
 	}
 	if resp.PublicKeyHex != hex.EncodeToString(pub) {
@@ -84,7 +84,7 @@ func TestCreateKeyIdempotent(t *testing.T) {
 		createKey:    func(_ context.Context, _ string) error { return nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -142,7 +142,7 @@ func TestCreateKeyPermissionDenied(t *testing.T) {
 		createKey: func(_ context.Context, _ string) error { return wrapped },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -160,7 +160,7 @@ func TestCreateKeyGenericVaultError(t *testing.T) {
 		createKey: func(_ context.Context, _ string) error { return boom },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), true)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), true)
 	if rr.Code != http.StatusInternalServerError {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -174,7 +174,7 @@ func TestCreateKeyGenericVaultError(t *testing.T) {
 
 func TestCreateKeyUnauthorized(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/evm/alice"}`), false)
+	rr := doRequest(h, http.MethodPost, "/keys", []byte(`{"path":"proj-a/prod/alice"}`), false)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -186,7 +186,7 @@ func TestShowKeyHappyPath(t *testing.T) {
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return pub, nil },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/alice", nil, true)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -204,11 +204,11 @@ func TestShowKeyNotFound(t *testing.T) {
 		},
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/ghost", nil, true)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/ghost", nil, true)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
-	if rr.Body.String() != "{\"error\":\"key not found: proj-a/evm/ghost\"}\n" {
+	if rr.Body.String() != "{\"error\":\"key not found: proj-a/prod/ghost\"}\n" {
 		t.Fatalf("body=%s", rr.Body.String())
 	}
 }
@@ -238,7 +238,7 @@ func TestShowKeyPermissionDenied(t *testing.T) {
 		getPublicKey: func(_ context.Context, _ string) ([]byte, error) { return nil, wrapped },
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/alice", nil, true)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
 	if rr.Code != http.StatusForbidden {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
@@ -246,7 +246,7 @@ func TestShowKeyPermissionDenied(t *testing.T) {
 
 func TestShowKeyUnauthorized(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/alice", nil, false)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, false)
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("code=%d", rr.Code)
 	}
@@ -353,12 +353,12 @@ func TestKeysShareRateLimitWithSign(t *testing.T) {
 	})
 
 	// First call (info) consumes the single available token.
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/alice", nil, true)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("first /keys/info code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	// Subsequent /sign/* should be rate-limited (shared budget).
-	body := []byte(`{"type":"personal_message","key_path":"proj/evm/alice","personal_message":"0x6869"}`)
+	body := []byte(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`)
 	rr = doRequest(h, http.MethodPost, "/sign/evm", body, true)
 	if rr.Code != http.StatusTooManyRequests {
 		t.Fatalf("expected /sign/evm to be rate-limited via shared budget, got code=%d body=%s", rr.Code, rr.Body.String())
@@ -404,7 +404,7 @@ func TestKeysInfoRoutesToShow(t *testing.T) {
 		},
 	}
 	h := newGatewayHandlerWithKeys(ks)
-	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/evm/alice", nil, true)
+	rr := doRequest(h, http.MethodGet, "/keys/info?path=proj-a/prod/alice", nil, true)
 	if rr.Code != http.StatusOK {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
