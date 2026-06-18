@@ -1,6 +1,10 @@
 package types
 
-import "errors"
+import (
+	"errors"
+	"sort"
+	"strings"
+)
 
 var (
 	ErrNotFound     = errors.New("not found")
@@ -8,6 +12,52 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 	ErrBadRequest   = errors.New("bad request")
 )
+
+// Chain is a closed-set signing-capability identifier persisted on a key.
+type Chain string
+
+const (
+	ChainEVM    Chain = "evm"
+	ChainCosmos Chain = "cosmos"
+)
+
+// errChainsSubset is the verbatim message used at create-time validation.
+const errChainsSubset = "chains is required and must be a non-empty subset of [evm, cosmos]"
+
+// ParseChains lowercases, dedupes, sorts, and validates closed-set membership.
+// It rejects an empty result and any unknown member.
+func ParseChains(in []string) ([]Chain, error) {
+	seen := map[Chain]bool{}
+	for _, raw := range in {
+		c := Chain(strings.ToLower(strings.TrimSpace(raw)))
+		switch c {
+		case ChainEVM, ChainCosmos:
+			seen[c] = true
+		default:
+			return nil, errors.New(errChainsSubset)
+		}
+	}
+	if len(seen) == 0 {
+		return nil, errors.New(errChainsSubset)
+	}
+	out := make([]Chain, 0, len(seen))
+	for c := range seen {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
+
+// ChainsContain reports whether c is in chains.
+func ChainsContain(chains []Chain, c Chain) bool {
+	for _, x := range chains {
+		if x == c {
+			return true
+		}
+	}
+	return false
+}
+
 
 type EVMSignRequest struct {
 	// Type discriminates which payload field is consulted. Required.
