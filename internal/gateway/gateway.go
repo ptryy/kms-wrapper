@@ -36,6 +36,7 @@ type HealthChecker interface{ Health() error }
 
 type KeyStore interface {
 	CreateKey(ctx context.Context, path string, chains []string) error
+	UpdateKeyChains(ctx context.Context, path string, addChains []string) ([]string, error)
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
 	GetKeyChains(ctx context.Context, path string) ([]string, error)
 	ListKeys(ctx context.Context, prefix string) ([]string, error)
@@ -247,6 +248,7 @@ func (s *Server) appRoutes() []routeEntry {
 		{http.MethodPost, "/sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM)))},
 		{http.MethodPost, "/sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos)))},
 		{http.MethodPost, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.createKey)))},
+		{http.MethodPatch, "/keys/{path...}", s.rateLimit(s.auth(http.HandlerFunc(s.updateKeyChains)))},
 		{http.MethodGet, "/keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey)))},
 		{http.MethodGet, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys)))},
 	}
@@ -801,6 +803,82 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, info)
+}
+
+// updateKeyChains godoc
+// @Summary Expand a KMS key's chain allow-list
+// @Tags keys
+// @Accept json
+// @Produce json
+// @Param path path string true "Key path (format: {project}/{environment}/{username})" example(proj-a/prod/alice)
+// @Param body body apptypes.KeyUpdateChainsRequest true "Chain expansion payload"
+// @Success 200 {object} apptypes.KeyUpdateChainsResponse
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 403 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /v1/keys/{path} [patch]
+func (s *Server) updateKeyChains(w http.ResponseWriter, r *http.Request) {
+	path := r.PathValue("path")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if err := vault.ValidateKeyPath(path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(raw) == 0 {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+	if len(raw) != 1 {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+	addRaw, ok := raw["add_chains"]
+	if !ok {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+
+	var addChains []string
+	if err := json.Unmarshal(addRaw, &addChains); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	parsed, err := apptypes.ParseChains(addChains)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	rawChains := make([]string, len(parsed))
+	for i, chain := range parsed {
+		rawChains[i] = string(chain)
+	}
+	updated, err := s.keys.UpdateKeyChains(r.Context(), path, rawChains)
+	if err != nil {
+		s.writeVaultErr(w, r, err, path, "UpdateKeyChains")
+		return
+	}
+	if s.chains != nil {
+		s.chains.invalidate(path)
+	}
+	chains := make([]apptypes.Chain, len(updated))
+	for i, chain := range updated {
+		chains[i] = apptypes.Chain(chain)
+	}
+	writeJSON(w, apptypes.KeyUpdateChainsResponse{Path: path, Chains: chains})
 }
 
 // listKeys godoc

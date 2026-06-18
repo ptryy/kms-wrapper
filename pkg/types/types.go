@@ -58,7 +58,6 @@ func ChainsContain(chains []Chain, c Chain) bool {
 	return false
 }
 
-
 type EVMSignRequest struct {
 	// Type discriminates which payload field is consulted. Required.
 	Type            string `json:"type" binding:"required" enums:"raw_tx,personal_message,eip712_digest"`
@@ -153,6 +152,11 @@ type KeyListEntry struct {
 
 type KeyUpdateChainsRequest struct {
 	AddChains []Chain `json:"add_chains" example:"cosmos"`
+}
+
+type KeyUpdateChainsResponse struct {
+	Path   string  `json:"path"`
+	Chains []Chain `json:"chains"`
 }
 
 type KeyListResponse struct {

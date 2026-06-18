@@ -53,6 +53,12 @@ func (c *chainsCache) set(path string, chains []apptypes.Chain, now time.Time) {
 	}
 }
 
+func (c *chainsCache) invalidate(path string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, path)
+}
+
 func canonicalizeChains(raw []string) ([]apptypes.Chain, error) {
 	if len(raw) == 0 {
 		return []apptypes.Chain{}, nil

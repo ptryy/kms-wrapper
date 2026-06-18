@@ -219,7 +219,7 @@ func guardSwaggerNonLoopback(cfg config.Config, warnOut io.Writer) error {
 }
 
 func keysCmd(st *cliState) *cobra.Command {
-	var path, prefix string
+	var path, prefix, chainsRaw string
 	keys := &cobra.Command{Use: "keys", Short: "manage Vault Transit keys"}
 	create := &cobra.Command{
 		Use:   "create",
@@ -232,7 +232,15 @@ func keysCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := c.CreateKey(cmd.Context(), path); err != nil {
+			chains, err := types.ParseChains(strings.Split(chainsRaw, ","))
+			if err != nil {
+				return err
+			}
+			createChains := make([]string, len(chains))
+			for i, chain := range chains {
+				createChains[i] = string(chain)
+			}
+			if err := c.CreateKey(cmd.Context(), path, createChains); err != nil {
 				return err
 			}
 			return printKeyInfo(cmd, c, path)
@@ -271,6 +279,7 @@ func keysCmd(st *cliState) *cobra.Command {
 		},
 	}
 	create.Flags().StringVar(&path, "path", "", "key path")
+	create.Flags().StringVar(&chainsRaw, "chains", "", "comma-separated signing chains (evm,cosmos)")
 	show.Flags().StringVar(&path, "path", "", "key path")
 	list.Flags().StringVar(&prefix, "prefix", "", "key path prefix (optional)")
 	keys.AddCommand(create, show, list)
@@ -278,7 +287,15 @@ func keysCmd(st *cliState) *cobra.Command {
 }
 
 func printKeyInfo(cmd *cobra.Command, c *vault.Client, path string) error {
-	info, err := keyinfo.For(cmd.Context(), c, path, keyinfo.DefaultHRP)
+	rawChains, err := c.GetKeyChains(cmd.Context(), path)
+	if err != nil {
+		return err
+	}
+	chains := make([]types.Chain, len(rawChains))
+	for i, chain := range rawChains {
+		chains[i] = types.Chain(chain)
+	}
+	info, err := keyinfo.For(cmd.Context(), c, path, keyinfo.DefaultHRP, chains)
 	if err != nil {
 		if errors.Is(err, types.ErrNotFound) {
 			return fmt.Errorf("key not found: %s", path)
