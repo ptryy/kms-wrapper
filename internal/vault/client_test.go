@@ -51,15 +51,31 @@ func TestClientMockPlugin(t *testing.T) {
 			case http.MethodPost, http.MethodPut:
 				var body map[string]any
 				_ = json.NewDecoder(r.Body).Decode(&body)
-				if got, ok := body["chains"].([]any); ok {
+				if got, ok := body["add_chains"].([]any); ok {
+					added := make([]string, 0, len(got))
+					for _, chain := range got {
+						if s, ok := chain.(string); ok {
+							added = append(added, s)
+						}
+					}
+					seen := map[string]bool{}
+					for _, chain := range append(mp.chains, added...) {
+						seen[chain] = true
+					}
+					mp.chains = mp.chains[:0]
+					for chain := range seen {
+						mp.chains = append(mp.chains, chain)
+					}
+					sort.Strings(mp.chains)
+				} else if got, ok := body["chains"].([]any); ok {
 					mp.chains = mp.chains[:0]
 					for _, chain := range got {
 						if s, ok := chain.(string); ok {
 							mp.chains = append(mp.chains, s)
 						}
 					}
+					mp.created = true
 				}
-				mp.created = true
 				_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
 					"compressed_pub_key": base64.StdEncoding.EncodeToString(mp.compressed),
 					"evm_address":        "0x0000000000000000000000000000000000000000",
@@ -95,33 +111,6 @@ func TestClientMockPlugin(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
 				"r": hex.EncodeToString(sig[0:32]),
 				"s": hex.EncodeToString(sig[32:64]),
-			}})
-		case vaultKeyPath + "/update-chains":
-			if r.Method != http.MethodPost && r.Method != http.MethodPut {
-				http.NotFound(w, r)
-				return
-			}
-			var body map[string]any
-			_ = json.NewDecoder(r.Body).Decode(&body)
-			added := make([]string, 0)
-			if got, ok := body["add_chains"].([]any); ok {
-				for _, chain := range got {
-					if s, ok := chain.(string); ok {
-						added = append(added, s)
-					}
-				}
-			}
-			seen := map[string]bool{}
-			for _, chain := range append(mp.chains, added...) {
-				seen[chain] = true
-			}
-			mp.chains = mp.chains[:0]
-			for chain := range seen {
-				mp.chains = append(mp.chains, chain)
-			}
-			sort.Strings(mp.chains)
-			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
-				"chains": mp.chains,
 			}})
 		default:
 			http.NotFound(w, r)

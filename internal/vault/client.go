@@ -374,7 +374,7 @@ func (c *Client) UpdateKeyChains(ctx context.Context, path string, addChains []s
 		return nil, err
 	}
 	start := time.Now()
-	secret, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path)+"/update-chains", map[string]any{
+	secret, err := c.api.Logical().WriteWithContext(ctx, ToVaultPath(path), map[string]any{
 		"add_chains": addChains,
 	})
 	if err != nil {
