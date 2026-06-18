@@ -2,6 +2,7 @@ package kmsplugin
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/vault/sdk/framework"
@@ -33,6 +34,7 @@ type KeyEntry struct {
 
 type backend struct {
 	*framework.Backend
+	keyLocks sync.Map
 }
 
 // Factory is the entry point invoked by Vault's plugin loader.
@@ -53,6 +55,7 @@ func newBackend() *backend {
 			SealWrapStorage: []string{"keys/"},
 		},
 		Paths: framework.PathAppend(
+			b.pathsKeysUpdate(),
 			b.pathsKeys(),
 			b.pathsSign(),
 		),
