@@ -878,9 +878,12 @@ func (s *Server) updateKeyChains(w http.ResponseWriter, r *http.Request) {
 	if s.chains != nil {
 		s.chains.invalidate(path)
 	}
-	chains := make([]apptypes.Chain, len(updated))
-	for i, chain := range updated {
-		chains[i] = apptypes.Chain(chain)
+	chains, err := canonicalizeChains(updated)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "persisted chains are not canonical",
+			"error", err, "key_path", path)
+		writeError(w, http.StatusInternalServerError, "invalid persisted chains")
+		return
 	}
 	writeJSON(w, apptypes.KeyUpdateChainsResponse{Path: path, Chains: chains})
 }

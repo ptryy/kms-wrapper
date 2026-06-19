@@ -314,7 +314,10 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte, chain strin
 	if len(hash) != 32 {
 		return nil, nil, errors.New("payload must be 32 bytes (pre-hashed)")
 	}
-	if strings.TrimSpace(chain) == "" {
+	// Canonicalize so minor formatting (case/whitespace) matches the canonical
+	// persisted allow-list instead of being spuriously denied by the plugin.
+	chain = strings.ToLower(strings.TrimSpace(chain))
+	if chain == "" {
 		return nil, nil, errors.New("chain is required")
 	}
 	start := time.Now()

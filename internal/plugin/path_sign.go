@@ -80,6 +80,9 @@ func (b *backend) handleSign(ctx context.Context, req *logical.Request, data *fr
 		return logical.ErrorResponse("chain is required"), logical.ErrInvalidRequest
 	}
 	chain, _ := chainRaw.(string)
+	// Canonicalize before authorization so case/whitespace variants match the
+	// canonical persisted allow-list rather than being spuriously denied.
+	chain = strings.ToLower(strings.TrimSpace(chain))
 	if chain == "" {
 		return logical.ErrorResponse("chain is required"), logical.ErrInvalidRequest
 	}
