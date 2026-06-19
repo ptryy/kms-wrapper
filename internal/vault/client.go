@@ -314,6 +314,9 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte, chain strin
 	if len(hash) != 32 {
 		return nil, nil, errors.New("payload must be 32 bytes (pre-hashed)")
 	}
+	if strings.TrimSpace(chain) == "" {
+		return nil, nil, errors.New("chain is required")
+	}
 	start := time.Now()
 	secret, err := c.api.Logical().WriteWithContext(ctx, ToSignPath(path), map[string]any{
 		"input": hex.EncodeToString(hash),

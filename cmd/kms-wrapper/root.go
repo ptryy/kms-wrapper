@@ -228,6 +228,9 @@ func keysCmd(st *cliState) *cobra.Command {
 			if path == "" {
 				return errors.New("required flag missing: path")
 			}
+			if chainsRaw == "" {
+				return errors.New("required flag missing: chains")
+			}
 			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
 				return err
@@ -252,6 +255,9 @@ func keysCmd(st *cliState) *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if path == "" {
 				return errors.New("required flag missing: path")
+			}
+			if addRaw == "" {
+				return errors.New("required flag missing: add")
 			}
 			c, err := st.client(cmd.ErrOrStderr())
 			if err != nil {
@@ -319,9 +325,15 @@ func printKeyInfo(cmd *cobra.Command, c *vault.Client, path string) error {
 	if err != nil {
 		return err
 	}
-	chains := make([]types.Chain, len(rawChains))
-	for i, chain := range rawChains {
-		chains[i] = types.Chain(chain)
+	// Canonicalize persisted chains (allowing an empty list for legacy keys) so
+	// address derivation in keyinfo.For matches on ChainEVM/ChainCosmos even if
+	// Vault returns non-canonical values (case, whitespace, duplicates).
+	var chains []types.Chain
+	if len(rawChains) > 0 {
+		chains, err = types.ParseChains(rawChains)
+		if err != nil {
+			return err
+		}
 	}
 	info, err := keyinfo.For(cmd.Context(), c, path, keyinfo.DefaultHRP, chains)
 	if err != nil {

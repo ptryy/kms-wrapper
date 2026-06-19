@@ -290,10 +290,15 @@ func sameChainSet(a, b []string) bool {
 
 // keyInfoResponse returns the public-safe view of a KeyEntry — never the private key.
 func keyInfoResponse(entry *KeyEntry) *logical.Response {
+	// Serialize chains as a non-nil slice so legacy keys with no persisted
+	// chains marshal to JSON [] (not null); a null would break the gateway/CLI
+	// decodeStringSlice path with "missing chains field".
+	chains := make([]string, 0, len(entry.Chains))
+	chains = append(chains, entry.Chains...)
 	data := map[string]interface{}{
 		"compressed_pub_key": base64.StdEncoding.EncodeToString(entry.CompressedPubKey),
 		"evm_address":        entry.EVMAddress,
-		"chains":             append([]string(nil), entry.Chains...),
+		"chains":             chains,
 		"source":             entry.Source,
 		"created_at":         entry.CreatedAt.Format(time.RFC3339Nano),
 	}
