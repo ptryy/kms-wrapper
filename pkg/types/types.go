@@ -137,7 +137,7 @@ type KeyInfo struct {
 
 type KeyCreateRequest struct {
 	Path   string  `json:"path" binding:"required" example:"proj-a/prod/alice"`
-	Chains []Chain `json:"chains" example:"evm,cosmos"`
+	Chains []Chain `json:"chains" binding:"required" example:"evm,cosmos"`
 }
 
 type KeyCreateResponse struct {
@@ -156,7 +156,7 @@ type KeyListEntry struct {
 }
 
 type KeyUpdateChainsRequest struct {
-	AddChains []Chain `json:"add_chains" example:"cosmos"`
+	AddChains []Chain `json:"add_chains" binding:"required" example:"cosmos"`
 }
 
 type KeyUpdateChainsResponse struct {

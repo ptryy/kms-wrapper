@@ -134,6 +134,7 @@ const docTemplate = `{
                     }
                 },
                 "required": [
+                    "chains",
                     "path"
                 ],
                 "type": "object"
@@ -241,6 +242,9 @@ const docTemplate = `{
                         "uniqueItems": false
                     }
                 },
+                "required": [
+                    "add_chains"
+                ],
                 "type": "object"
             },
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsResponse": {

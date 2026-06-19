@@ -22,7 +22,7 @@ func (b *backend) pathsKeys() []*framework.Path {
 	nameField := map[string]*framework.FieldSchema{
 		"name": {
 			Type:        framework.TypeString,
-			Description: "Key name. May contain `/` to support hierarchical multi-tenant naming (project/chain/user).",
+			Description: "Key name. Must be a hierarchical multi-tenant path of the form {project}/{environment}/{username} (segments match [a-z0-9_-]).",
 		},
 		"chains": {
 			Type:        framework.TypeString,

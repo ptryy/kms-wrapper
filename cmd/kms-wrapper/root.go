@@ -328,7 +328,7 @@ func printKeyInfo(cmd *cobra.Command, c *vault.Client, path string) error {
 	// Canonicalize persisted chains (allowing an empty list for legacy keys) so
 	// address derivation in keyinfo.For matches on ChainEVM/ChainCosmos even if
 	// Vault returns non-canonical values (case, whitespace, duplicates).
-	var chains []types.Chain
+	chains := []types.Chain{}
 	if len(rawChains) > 0 {
 		chains, err = types.ParseChains(rawChains)
 		if err != nil {
