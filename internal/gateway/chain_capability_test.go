@@ -173,6 +173,36 @@ func TestSign_PatchExpand_ThenSignSucceeds(t *testing.T) {
 	}
 }
 
+func TestSign_InvalidKeyPath_Returns400(t *testing.T) {
+	store := newChainStore()
+	h := newChainAuthHandler(t, store)
+
+	// A malformed key_path must be rejected with 400 before authorizeChain runs,
+	// not surfaced as a 503 from GetKeyChains' internal validation.
+	cases := []struct {
+		name, path, body string
+	}{
+		{
+			name: "evm",
+			path: "/sign/evm",
+			body: `{"type":"personal_message","key_path":"payment/prod","personal_message":"0x6869"}`,
+		},
+		{
+			name: "cosmos",
+			path: "/sign/cosmos",
+			body: `{"key_path":"payment/prod","sign_mode":"DIRECT","sign_doc":"` + base64.StdEncoding.EncodeToString([]byte("doc")) + `"}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rr := doRequest(h, http.MethodPost, tc.path, []byte(tc.body), true)
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
+			}
+		})
+	}
+}
+
 func TestPatchKeyChainsExpandOnly(t *testing.T) {
 	store := newChainStore()
 	store.SetChains("payment/prod/alice", []string{"evm"})

@@ -518,6 +518,12 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "key_path is required")
 		return
 	}
+	// Validate before authorizeChain so a malformed key_path returns 400, not a
+	// 503 from GetKeyChains' internal validation (consistent with createKey/showKey).
+	if err := vault.ValidateKeyPath(req.KeyPath); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	switch req.Type {
 	case "raw_tx":
 		s.signEVMRawTx(w, r, &req)
@@ -646,6 +652,12 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.KeyPath == "" {
 		writeError(w, http.StatusBadRequest, "key_path is required")
+		return
+	}
+	// Validate before authorizeChain so a malformed key_path returns 400, not a
+	// 503 from GetKeyChains' internal validation (consistent with createKey/showKey).
+	if err := vault.ValidateKeyPath(req.KeyPath); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	hrp := req.HRP
