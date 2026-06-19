@@ -264,6 +264,17 @@ func TestPatchKeyChainsExpandOnly(t *testing.T) {
 			t.Fatalf("body=%q want=%q", got, want)
 		}
 	})
+
+	t.Run("rejects_non_array_add_chains", func(t *testing.T) {
+		// Valid JSON, wrong type for add_chains: must report the type, not "invalid JSON".
+		rr := doRequest(h, http.MethodPatch, "/keys/payment/prod/alice", []byte(`{"add_chains":"evm"}`), true)
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
+		}
+		if got, want := rr.Body.String(), "{\"error\":\"add_chains must be an array of strings\"}\n"; got != want {
+			t.Fatalf("body=%q want=%q", got, want)
+		}
+	})
 }
 
 func TestPatchKeyChainsUnauthorized(t *testing.T) {

@@ -869,7 +869,7 @@ func (s *Server) updateKeyChains(w http.ResponseWriter, r *http.Request) {
 
 	var addChains []string
 	if err := json.Unmarshal(addRaw, &addChains); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON")
+		writeError(w, http.StatusBadRequest, "add_chains must be an array of strings")
 		return
 	}
 	parsed, err := apptypes.ParseChains(addChains)
@@ -950,8 +950,11 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 	}
 	page := append([]string{}, ks[offset:end]...)
 	entries := make([]apptypes.KeyListEntry, len(page))
-	for i, path := range page {
-		entries[i].Path = path
+	for i, name := range page {
+		// Vault's LIST returns names relative to the prefix; rejoin so entry.Path
+		// is the fully-qualified key path and the chains lookup below (which needs
+		// {project}/{environment}/{username}) targets the right key.
+		entries[i].Path = joinKeyPath(prefix, name)
 		// Default to an empty array (never null) so the wire schema holds even
 		// when the chain tag read fails below; ChainsAvailable stays false.
 		entries[i].Chains = []apptypes.Chain{}
@@ -980,8 +983,8 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 				}
 			}()
 		}
-		for i, path := range page {
-			jobs <- listKeyChainsJob{index: i, path: path}
+		for i := range page {
+			jobs <- listKeyChainsJob{index: i, path: entries[i].Path}
 		}
 		close(jobs)
 		wg.Wait()
@@ -1014,6 +1017,19 @@ func toKeyListChains(chains []string) ([]apptypes.Chain, bool) {
 		return nil, false
 	}
 	return out, true
+}
+
+// joinKeyPath reassembles the fully-qualified key path from the list prefix and
+// a name returned by ListKeys. Vault's LIST returns names relative to the
+// prefix, so the bare name (e.g. "alice") is not a valid key path on its own.
+func joinKeyPath(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	if strings.HasSuffix(prefix, "/") {
+		return prefix + name
+	}
+	return prefix + "/" + name
 }
 
 // parseListLimit parses ?limit and clamps it to [1, listLimitMax]. Empty

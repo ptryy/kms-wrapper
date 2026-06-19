@@ -297,9 +297,9 @@ func TestListKeysHappyPath(t *testing.T) {
 		},
 		getKeyChains: func(_ context.Context, path string) ([]string, error) {
 			switch path {
-			case "evm/alice":
+			case "proj-a/evm/alice":
 				return []string{"evm"}, nil
-			case "cosmos/bob":
+			case "proj-a/cosmos/bob":
 				return []string{"cosmos", "evm"}, nil
 			default:
 				t.Fatalf("unexpected path=%q", path)
@@ -314,7 +314,7 @@ func TestListKeysHappyPath(t *testing.T) {
 	}
 	var resp apptypes.KeyListResponse
 	decodeJSON(t, rr.Body.Bytes(), &resp)
-	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0].Path != "evm/alice" {
+	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0].Path != "proj-a/evm/alice" {
 		t.Fatalf("unexpected response: %#v", resp)
 	}
 	if !resp.Keys[0].ChainsAvailable || !resp.Keys[1].ChainsAvailable {
@@ -371,11 +371,11 @@ func TestListKeysChainsReadFailureIsUnavailable(t *testing.T) {
 		},
 		getKeyChains: func(_ context.Context, path string) ([]string, error) {
 			switch path {
-			case "evm/alice":
+			case "proj-a/evm/alice":
 				return []string{"evm"}, nil
-			case "cosmos/bob":
+			case "proj-a/cosmos/bob":
 				return nil, errors.New("tag lookup failed")
-			case "evm/charlie":
+			case "proj-a/evm/charlie":
 				return []string{"cosmos"}, nil
 			default:
 				return nil, fmt.Errorf("unexpected path %q", path)
