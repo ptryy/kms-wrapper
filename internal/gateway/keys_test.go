@@ -317,6 +317,9 @@ func TestListKeysHappyPath(t *testing.T) {
 	if resp.Count != 2 || len(resp.Keys) != 2 || resp.Keys[0].Path != "evm/alice" {
 		t.Fatalf("unexpected response: %#v", resp)
 	}
+	if !resp.Keys[0].ChainsAvailable || !resp.Keys[1].ChainsAvailable {
+		t.Fatalf("expected chains available, got %#v", resp.Keys)
+	}
 	if got, want := resp.Keys[0].Chains, []apptypes.Chain{apptypes.ChainEVM}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("first chains got=%#v want=%#v", got, want)
 	}
@@ -361,7 +364,7 @@ func TestListKeysEmptyResultIsNotNull(t *testing.T) {
 	}
 }
 
-func TestListKeysChainsReadFailureIsNull(t *testing.T) {
+func TestListKeysChainsReadFailureIsUnavailable(t *testing.T) {
 	ks := keyStoreMock{
 		listKeys: func(_ context.Context, _ string) ([]string, error) {
 			return []string{"evm/alice", "cosmos/bob", "evm/charlie"}, nil
@@ -385,18 +388,26 @@ func TestListKeysChainsReadFailureIsNull(t *testing.T) {
 		t.Fatalf("code=%d body=%s", rr.Code, rr.Body.String())
 	}
 	type entry struct {
-		Path   string          `json:"path"`
-		Chains json.RawMessage `json:"chains"`
+		Path            string          `json:"path"`
+		Chains          json.RawMessage `json:"chains"`
+		ChainsAvailable bool            `json:"chains_available"`
 	}
 	var resp struct {
 		Keys []entry `json:"keys"`
 	}
 	decodeJSON(t, rr.Body.Bytes(), &resp)
-	if got, want := string(resp.Keys[1].Chains), "null"; got != want {
-		t.Fatalf("expected failed chains read to serialize null, got %s", got)
+	// Failed tag read: empty array (never null) with availability flagged false.
+	if got, want := string(resp.Keys[1].Chains), "[]"; got != want {
+		t.Fatalf("expected failed chains read to serialize [], got %s", got)
+	}
+	if resp.Keys[1].ChainsAvailable {
+		t.Fatalf("expected chains_available=false for failed read")
 	}
 	if got, want := string(resp.Keys[0].Chains), `["evm"]`; got != want {
 		t.Fatalf("first chains got %s want %s", got, want)
+	}
+	if !resp.Keys[0].ChainsAvailable {
+		t.Fatalf("expected chains_available=true for successful read")
 	}
 }
 

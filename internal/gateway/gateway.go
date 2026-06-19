@@ -794,9 +794,12 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 		s.writeVaultErr(w, r, err, path, "GetKeyChains")
 		return
 	}
-	chains := make([]apptypes.Chain, len(rawChains))
-	for i, chain := range rawChains {
-		chains[i] = apptypes.Chain(chain)
+	chains, err := canonicalizeChains(rawChains)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "persisted chains are not canonical",
+			"error", err, "key_path", path)
+		writeError(w, http.StatusInternalServerError, "invalid persisted chains")
+		return
 	}
 	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP, chains)
 	if err != nil {
@@ -934,6 +937,9 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 	entries := make([]apptypes.KeyListEntry, len(page))
 	for i, path := range page {
 		entries[i].Path = path
+		// Default to an empty array (never null) so the wire schema holds even
+		// when the chain tag read fails below; ChainsAvailable stays false.
+		entries[i].Chains = []apptypes.Chain{}
 	}
 	if len(page) > 0 {
 		jobs := make(chan listKeyChainsJob)
@@ -951,7 +957,10 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 					chains, err := s.keys.GetKeyChains(ctx, job.path)
 					cancel()
 					if err == nil {
-						entries[job.index].Chains = toKeyListChains(chains)
+						if parsed, ok := toKeyListChains(chains); ok {
+							entries[job.index].Chains = parsed
+							entries[job.index].ChainsAvailable = true
+						}
 					}
 				}
 			}()
@@ -981,12 +990,15 @@ type listKeyChainsJob struct {
 	path  string
 }
 
-func toKeyListChains(chains []string) []apptypes.Chain {
-	out := make([]apptypes.Chain, 0, len(chains))
-	for _, chain := range chains {
-		out = append(out, apptypes.Chain(chain))
+// toKeyListChains canonicalizes the raw persisted chains for a list entry.
+// The bool is false when the strings cannot be parsed, so the caller can mark
+// the entry's chains unavailable rather than reporting a bogus allow-list.
+func toKeyListChains(chains []string) ([]apptypes.Chain, bool) {
+	out, err := canonicalizeChains(chains)
+	if err != nil {
+		return nil, false
 	}
-	return out
+	return out, true
 }
 
 // parseListLimit parses ?limit and clamps it to [1, listLimitMax]. Empty

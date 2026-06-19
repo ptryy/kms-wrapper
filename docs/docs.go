@@ -193,12 +193,15 @@ const docTemplate = `{
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListEntry": {
                 "properties": {
                     "chains": {
-                        "description": "null = tag read failed (see resilient list)",
+                        "description": "Chains is the key's persisted allow-list, always a (possibly empty)\narray — never null — so the closed-set enum schema holds for generated\nclients. When the chain tag cannot be read in a resilient list,\nChainsAvailable is false and Chains is empty (see resilient list).",
                         "items": {
                             "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
+                    },
+                    "chains_available": {
+                        "type": "boolean"
                     },
                     "path": {
                         "type": "string"

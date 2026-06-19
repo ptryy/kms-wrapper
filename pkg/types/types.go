@@ -146,8 +146,13 @@ type KeyCreateResponse struct {
 }
 
 type KeyListEntry struct {
-	Path   string  `json:"path"`
-	Chains []Chain `json:"chains"` // null = tag read failed (see resilient list)
+	Path string `json:"path"`
+	// Chains is the key's persisted allow-list, always a (possibly empty)
+	// array — never null — so the closed-set enum schema holds for generated
+	// clients. When the chain tag cannot be read in a resilient list,
+	// ChainsAvailable is false and Chains is empty (see resilient list).
+	Chains          []Chain `json:"chains"`
+	ChainsAvailable bool    `json:"chains_available"`
 }
 
 type KeyUpdateChainsRequest struct {

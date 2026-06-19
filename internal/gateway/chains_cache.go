@@ -89,6 +89,9 @@ func (s *Server) authorizeChainFetch(ctx context.Context, path string, attempted
 		if errors.Is(err, apptypes.ErrNotFound) {
 			return nil, http.StatusNotFound, err
 		}
+		if errors.Is(err, apptypes.ErrPermission) {
+			return nil, http.StatusForbidden, err
+		}
 		return nil, http.StatusServiceUnavailable, err
 	}
 	chains, err := canonicalizeChains(rawChains)
@@ -110,6 +113,14 @@ func (s *Server) writeChainAuthzResult(w http.ResponseWriter, r *http.Request, k
 	case 0:
 		return true
 	case http.StatusForbidden:
+		if errors.Is(err, apptypes.ErrPermission) {
+			slog.WarnContext(r.Context(), "chain authorization lookup permission denied",
+				"key_path", keyPath,
+				"attempted_chain", attempted,
+			)
+			writeError(w, status, "permission denied")
+			return false
+		}
 		slog.WarnContext(r.Context(), "chain authorization denied",
 			"key_path", keyPath,
 			"attempted_chain", attempted,
