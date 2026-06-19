@@ -1,6 +1,7 @@
-// Package keyinfo derives the public key, EVM address, and Cosmos bech32
-// address for a given key path. Both the CLI (`kms-wrapper keys show`) and the
-// REST gateway (`GET /keys/info`) call this so the two surfaces never drift.
+// Package keyinfo derives the public key and the chain addresses permitted by
+// a key's allow-list (EVM and/or Cosmos bech32) for a given key path. Both the
+// CLI (`kms-wrapper keys show`) and the REST gateway (`GET /keys/info`) call
+// this so the two surfaces never drift.
 package keyinfo
 
 import (
@@ -18,10 +19,12 @@ type KeyStore interface {
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
 }
 
-// For fetches the public key for path and returns the derived KeyInfo.
-// An empty hrp defaults to DefaultHRP. Errors from the underlying store
-// (notably types.ErrNotFound) are returned unchanged so callers can
-// errors.Is-check them.
+// For fetches the public key for path and returns the derived KeyInfo. Address
+// derivation is conditional on chains: the EVM address is set only when chains
+// contains ChainEVM, and the Cosmos bech32 address only when it contains
+// ChainCosmos (an empty/nil chains derives neither). An empty hrp defaults to
+// DefaultHRP. Errors from the underlying store (notably types.ErrNotFound) are
+// returned unchanged so callers can errors.Is-check them.
 func For(ctx context.Context, store KeyStore, path, hrp string, chains []types.Chain) (types.KeyInfo, error) {
 	if hrp == "" {
 		hrp = DefaultHRP
