@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sort"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ryan-truong/kms-wrapper/pkg/types"
 )
 
 // mockPlugin emulates the kms-vault-plugin HTTP surface (kms/keys/<path>,
@@ -192,5 +194,35 @@ func TestSignRequiresHashLength(t *testing.T) {
 	c := &Client{}
 	if _, _, err := c.Sign(context.Background(), "proj/prod/alice", []byte{1}, "evm"); err == nil || err.Error() != "payload must be 32 bytes (pre-hashed)" {
 		t.Fatalf("unexpected err %v", err)
+	}
+}
+
+// A missing key must be recorded as not_found, not ok: the read succeeds at the
+// HTTP layer but the method returns ErrNotFound on a nil secret.
+func TestRecordsNotFoundOnMissingKey(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/sys/health" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"initialized": true})
+			return
+		}
+		// Empty-body 404 so the Vault client returns a nil secret (key missing).
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	c, err := NewClient(ts.URL, TokenAuthProvider{TokenValue: "root"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var statuses []string
+	c.SetVaultCallObserver(func(op, status string, _ float64) {
+		statuses = append(statuses, op+":"+status)
+	})
+
+	if _, err := c.GetKeyChains(context.Background(), "proj/prod/ghost"); !errors.Is(err, types.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+	if want := "read:not_found"; len(statuses) != 1 || statuses[0] != want {
+		t.Fatalf("recorded %v, want [%s]", statuses, want)
 	}
 }

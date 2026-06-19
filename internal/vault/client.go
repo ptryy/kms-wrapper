@@ -279,10 +279,12 @@ func (c *Client) GetPublicKey(ctx context.Context, path string) ([]byte, error) 
 		c.recordCall("read", start, mapped)
 		return nil, mapped
 	}
-	c.recordCall("read", start, nil)
 	if secret == nil || secret.Data == nil {
-		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		err = fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		c.recordCall("read", start, err)
+		return nil, err
 	}
+	c.recordCall("read", start, nil)
 	compressedB64, ok := secret.Data["compressed_pub_key"].(string)
 	if !ok || compressedB64 == "" {
 		return nil, errors.New("plugin response missing compressed_pub_key")
@@ -330,10 +332,12 @@ func (c *Client) Sign(ctx context.Context, path string, hash []byte, chain strin
 		c.recordCall("sign", start, mapped)
 		return nil, nil, mapped
 	}
-	c.recordCall("sign", start, nil)
 	if secret == nil || secret.Data == nil {
-		return nil, nil, fmt.Errorf("%w: key not found during sign: %s", types.ErrNotFound, path)
+		err = fmt.Errorf("%w: key not found during sign: %s", types.ErrNotFound, path)
+		c.recordCall("sign", start, err)
+		return nil, nil, err
 	}
+	c.recordCall("sign", start, nil)
 	rHex, _ := secret.Data["r"].(string)
 	sHex, _ := secret.Data["s"].(string)
 	if rHex == "" || sHex == "" {
@@ -362,10 +366,12 @@ func (c *Client) GetKeyChains(ctx context.Context, path string) ([]string, error
 		c.recordCall("read", start, mapped)
 		return nil, mapped
 	}
-	c.recordCall("read", start, nil)
 	if secret == nil || secret.Data == nil {
-		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		err = fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		c.recordCall("read", start, err)
+		return nil, err
 	}
+	c.recordCall("read", start, nil)
 	chains, err := decodeStringSlice(secret.Data["chains"])
 	if err != nil {
 		return nil, fmt.Errorf("decode chains: %w", err)
@@ -388,10 +394,12 @@ func (c *Client) UpdateKeyChains(ctx context.Context, path string, addChains []s
 		c.recordCall("update_chains", start, mapped)
 		return nil, mapped
 	}
-	c.recordCall("update_chains", start, nil)
 	if secret == nil || secret.Data == nil {
-		return nil, fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		err = fmt.Errorf("%w: key not found: %s", types.ErrNotFound, path)
+		c.recordCall("update_chains", start, err)
+		return nil, err
 	}
+	c.recordCall("update_chains", start, nil)
 	chains, err := decodeStringSlice(secret.Data["chains"])
 	if err != nil {
 		return nil, fmt.Errorf("decode chains: %w", err)
