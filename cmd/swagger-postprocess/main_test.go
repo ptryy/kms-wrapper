@@ -64,6 +64,46 @@ func TestInjectEVMDiscriminator_UsesShortPrefix(t *testing.T) {
 	}
 }
 
+func TestValidateSpecRefs_DanglingMappingFails(t *testing.T) {
+	spec := map[string]any{
+		"components": map[string]any{"schemas": map[string]any{
+			"kms-wrapper_pkg_types.EVMSignRawTxRequest": map[string]any{},
+		}},
+		"paths": map[string]any{"/v1/sign/evm": map[string]any{"post": map[string]any{
+			"requestBody": map[string]any{"content": map[string]any{
+				"application/json": map[string]any{"schema": map[string]any{
+					"discriminator": map[string]any{"mapping": map[string]any{
+						"raw_tx": "#/components/schemas/kms-wrapper_pkg_types.MISSING",
+					}},
+				}},
+			}},
+		}}},
+	}
+	if err := validateSpecRefs(spec); err == nil {
+		t.Fatal("expected dangling-ref error")
+	}
+}
+
+func TestValidateSpecRefs_AllResolveOK(t *testing.T) {
+	spec := map[string]any{
+		"components": map[string]any{"schemas": map[string]any{
+			"kms-wrapper_pkg_types.EVMSignRawTxRequest": map[string]any{},
+		}},
+		"paths": map[string]any{"/v1/sign/evm": map[string]any{"post": map[string]any{
+			"requestBody": map[string]any{"content": map[string]any{
+				"application/json": map[string]any{"schema": map[string]any{
+					"discriminator": map[string]any{"mapping": map[string]any{
+						"raw_tx": "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest",
+					}},
+				}},
+			}},
+		}}},
+	}
+	if err := validateSpecRefs(spec); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestNormalizeServers(t *testing.T) {
 	tests := []struct {
 		name string

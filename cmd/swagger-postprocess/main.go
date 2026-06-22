@@ -22,6 +22,10 @@ func run() error {
 
 	normalizeSpec(spec)
 
+	if err := validateSpecRefs(spec); err != nil {
+		return err
+	}
+
 	jsonBytes, err := json.MarshalIndent(spec, "", "    ")
 	if err != nil {
 		return fmt.Errorf("marshal spec: %w", err)
@@ -157,6 +161,50 @@ func rewriteRefs(node any, oldRef, newRef string) {
 			rewriteRefs(v, oldRef, newRef)
 		}
 	}
+}
+
+// validateSpecRefs fails if any discriminator.mapping $ref does not resolve
+// to an existing components.schemas key. Guards against swag output drift
+// silently re-breaking codegen.
+func validateSpecRefs(spec map[string]any) error {
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+	exists := func(ref string) bool {
+		const p = "#/components/schemas/"
+		if !strings.HasPrefix(ref, p) {
+			return true // not a local schema ref; not our concern
+		}
+		_, ok := schemas[strings.TrimPrefix(ref, p)]
+		return ok
+	}
+	var bad []string
+	var walk func(any)
+	walk = func(node any) {
+		switch n := node.(type) {
+		case map[string]any:
+			if disc, ok := n["discriminator"].(map[string]any); ok {
+				if mapping, ok := disc["mapping"].(map[string]any); ok {
+					for k, v := range mapping {
+						if s, ok := v.(string); ok && !exists(s) {
+							bad = append(bad, k+" -> "+s)
+						}
+					}
+				}
+			}
+			for _, v := range n {
+				walk(v)
+			}
+		case []any:
+			for _, v := range n {
+				walk(v)
+			}
+		}
+	}
+	walk(spec)
+	if len(bad) > 0 {
+		return fmt.Errorf("dangling discriminator mapping refs: %s", strings.Join(bad, ", "))
+	}
+	return nil
 }
 
 func normalizeServers(spec map[string]any) {
