@@ -42,22 +42,36 @@ func (cosmosMock) SignAmino(_ context.Context, _ string, _ []byte) ([]byte, []by
 }
 
 type keyStoreMock struct {
-	createKey    func(ctx context.Context, path string) error
-	getPublicKey func(ctx context.Context, path string) ([]byte, error)
-	listKeys     func(ctx context.Context, prefix string) ([]string, error)
+	createKey       func(ctx context.Context, path string, chains []string) error
+	updateKeyChains func(ctx context.Context, path string, addChains []string) ([]string, error)
+	getPublicKey    func(ctx context.Context, path string) ([]byte, error)
+	getKeyChains    func(ctx context.Context, path string) ([]string, error)
+	listKeys        func(ctx context.Context, prefix string) ([]string, error)
 }
 
-func (k keyStoreMock) CreateKey(ctx context.Context, path string) error {
+func (k keyStoreMock) CreateKey(ctx context.Context, path string, chains []string) error {
 	if k.createKey == nil {
 		return errors.New("CreateKey not stubbed")
 	}
-	return k.createKey(ctx, path)
+	return k.createKey(ctx, path, chains)
+}
+func (k keyStoreMock) UpdateKeyChains(ctx context.Context, path string, addChains []string) ([]string, error) {
+	if k.updateKeyChains == nil {
+		return nil, errors.New("UpdateKeyChains not stubbed")
+	}
+	return k.updateKeyChains(ctx, path, addChains)
 }
 func (k keyStoreMock) GetPublicKey(ctx context.Context, path string) ([]byte, error) {
 	if k.getPublicKey == nil {
 		return nil, errors.New("GetPublicKey not stubbed")
 	}
 	return k.getPublicKey(ctx, path)
+}
+func (k keyStoreMock) GetKeyChains(ctx context.Context, path string) ([]string, error) {
+	if k.getKeyChains == nil {
+		return []string{"evm", "cosmos"}, nil
+	}
+	return k.getKeyChains(ctx, path)
 }
 func (k keyStoreMock) ListKeys(ctx context.Context, prefix string) ([]string, error) {
 	if k.listKeys == nil {
@@ -77,8 +91,9 @@ type swaggerServer struct {
 }
 
 type swaggerPath struct {
-	Get  *swaggerOperation `json:"get,omitempty"`
-	Post *swaggerOperation `json:"post,omitempty"`
+	Get   *swaggerOperation `json:"get,omitempty"`
+	Post  *swaggerOperation `json:"post,omitempty"`
+	Patch *swaggerOperation `json:"patch,omitempty"`
 }
 
 type swaggerOperation struct {
@@ -226,7 +241,7 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 		t.Fatalf("expected openapi 3.0.x, got %q", doc.OpenAPI)
 	}
 
-	for _, path := range []string{"/v1/health", "/v1/sign/evm", "/v1/sign/cosmos"} {
+	for _, path := range []string{"/v1/health", "/v1/sign/evm", "/v1/sign/cosmos", "/v1/keys/{path}"} {
 		if _, ok := doc.Paths[path]; !ok {
 			t.Fatalf("missing path %s in swagger doc", path)
 		}
@@ -262,6 +277,9 @@ func TestSwaggerSpecRoutesAndSecurity(t *testing.T) {
 	}
 	if !requiresBearer(doc.Paths["/v1/sign/cosmos"].Post) {
 		t.Fatalf("expected /v1/sign/cosmos to require BearerAuth, got %#v", doc.Paths["/v1/sign/cosmos"].Post.Security)
+	}
+	if !requiresBearer(doc.Paths["/v1/keys/{path}"].Patch) {
+		t.Fatalf("expected /v1/keys/{path} to require BearerAuth, got %#v", doc.Paths["/v1/keys/{path}"].Patch.Security)
 	}
 }
 

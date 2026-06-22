@@ -7,6 +7,17 @@ import "github.com/swaggo/swag/v2"
 const docTemplate = `{
     "components": {
         "schemas": {
+            "github_com_ryan-truong_kms-wrapper_pkg_types.Chain": {
+                "enum": [
+                    "evm",
+                    "cosmos"
+                ],
+                "type": "string",
+                "x-enum-varnames": [
+                    "ChainEVM",
+                    "ChainCosmos"
+                ]
+            },
             "github_com_ryan-truong_kms-wrapper_pkg_types.CosmosSignRequest": {
                 "properties": {
                     "hrp": {
@@ -106,12 +117,24 @@ const docTemplate = `{
             },
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest": {
                 "properties": {
+                    "chains": {
+                        "example": [
+                            "evm",
+                            "cosmos"
+                        ],
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
                     "path": {
                         "example": "proj-a/prod/alice",
                         "type": "string"
                     }
                 },
                 "required": [
+                    "chains",
                     "path"
                 ],
                 "type": "object"
@@ -121,6 +144,13 @@ const docTemplate = `{
                     "already_existed": {
                         "example": false,
                         "type": "boolean"
+                    },
+                    "chains": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
                     },
                     "cosmos_address": {
                         "type": "string"
@@ -139,6 +169,13 @@ const docTemplate = `{
             },
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyInfo": {
                 "properties": {
+                    "chains": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
                     "cosmos_address": {
                         "type": "string"
                     },
@@ -154,6 +191,25 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListEntry": {
+                "properties": {
+                    "chains": {
+                        "description": "Chains is the key's persisted allow-list, always a (possibly empty)\narray — never null — so the closed-set enum schema holds for generated\nclients. When the chain tag cannot be read in a resilient list,\nChainsAvailable is false and Chains is empty (see resilient list).",
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "chains_available": {
+                        "type": "boolean"
+                    },
+                    "path": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListResponse": {
                 "properties": {
                     "count": {
@@ -161,17 +217,46 @@ const docTemplate = `{
                         "type": "integer"
                     },
                     "keys": {
-                        "example": [
-                            "prod/alice",
-                            "staging/bob"
-                        ],
                         "items": {
-                            "type": "string"
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyListEntry"
                         },
                         "type": "array",
                         "uniqueItems": false
                     },
                     "next_cursor": {
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsRequest": {
+                "properties": {
+                    "add_chains": {
+                        "example": [
+                            "cosmos"
+                        ],
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    }
+                },
+                "required": [
+                    "add_chains"
+                ],
+                "type": "object"
+            },
+            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsResponse": {
+                "properties": {
+                    "chains": {
+                        "items": {
+                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                        },
+                        "type": "array",
+                        "uniqueItems": false
+                    },
+                    "path": {
                         "type": "string"
                     }
                 },
@@ -522,6 +607,106 @@ const docTemplate = `{
                     }
                 ],
                 "summary": "Show a KMS key",
+                "tags": [
+                    "keys"
+                ]
+            }
+        },
+        "/v1/keys/{path}": {
+            "patch": {
+                "parameters": [
+                    {
+                        "description": "Key path (format: {project}/{environment}/{username})",
+                        "example": "proj-a/prod/alice",
+                        "in": "path",
+                        "name": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsRequest",
+                                "description": "Chain expansion payload",
+                                "summary": "body"
+                            }
+                        }
+                    },
+                    "description": "Chain expansion payload",
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Bad Request"
+                    },
+                    "401": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Unauthorized"
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Forbidden"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests"
+                    },
+                    "500": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Internal Server Error"
+                    }
+                },
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "summary": "Expand a KMS key's chain allow-list",
                 "tags": [
                     "keys"
                 ]

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadEnvOverrideAndCompatVaultEnv(t *testing.T) {
@@ -141,6 +142,9 @@ func TestLoadSwaggerConfigSources(t *testing.T) {
 		if !cfg.Gateway.SwaggerAuth {
 			t.Fatal("expected gateway.swagger_auth default true")
 		}
+		if cfg.Gateway.ChainsCacheTTL != 30*time.Second {
+			t.Fatalf("expected gateway.chains_cache_ttl default 30s, got %s", cfg.Gateway.ChainsCacheTTL)
+		}
 	})
 
 	t.Run("env overrides yaml", func(t *testing.T) {
@@ -166,6 +170,17 @@ gateway:
 		}
 		if !cfg.Gateway.SwaggerAuth {
 			t.Fatal("expected gateway.swagger_auth to be overridden by env var")
+		}
+	})
+
+	t.Run("chains cache ttl env overrides yaml", func(t *testing.T) {
+		t.Setenv("KMS_GATEWAY_CHAINS_CACHE_TTL", "45s")
+		cfg, err := Load("", nil)
+		if err != nil {
+			t.Fatalf("load failed: %v", err)
+		}
+		if cfg.Gateway.ChainsCacheTTL != 45*time.Second {
+			t.Fatalf("expected gateway.chains_cache_ttl env override, got %s", cfg.Gateway.ChainsCacheTTL)
 		}
 	})
 

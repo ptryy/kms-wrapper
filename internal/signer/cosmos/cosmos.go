@@ -36,7 +36,7 @@ func canonicaliseJSON(in []byte) ([]byte, error) {
 
 type Vault interface {
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
-	Sign(ctx context.Context, path string, hash []byte) (r, s *big.Int, err error)
+	Sign(ctx context.Context, path string, hash []byte, chain string) (r, s *big.Int, err error)
 }
 
 type Signer struct{ vault Vault }
@@ -186,7 +186,7 @@ func scanJSONArray(dec *json.Decoder) error {
 }
 
 func (s *Signer) signHash(ctx context.Context, keyPath string, hash [32]byte) ([]byte, []byte, error) {
-	r, ss, err := s.vault.Sign(ctx, keyPath, hash[:])
+	r, ss, err := s.vault.Sign(ctx, keyPath, hash[:], "cosmos")
 	if err != nil {
 		return nil, nil, err
 	}

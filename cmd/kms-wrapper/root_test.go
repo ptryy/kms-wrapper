@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -33,6 +36,10 @@ func TestHelpAndUnknownCommand(t *testing.T) {
 	out, err := execute("--help")
 	if err != nil || !strings.Contains(out, "serve") || !strings.Contains(out, "sign") {
 		t.Fatalf("help out=%q err=%v", out, err)
+	}
+	keysHelp, err := execute("keys", "--help")
+	if err != nil || !strings.Contains(keysHelp, "update-chains") {
+		t.Fatalf("keys help out=%q err=%v", keysHelp, err)
 	}
 	out, err = execute("unknowncmd")
 	if err == nil || !strings.Contains(out+err.Error(), "unknown command") {
@@ -96,5 +103,50 @@ func TestHealthMissingConfigFile_NoEnv(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "config error") {
 		t.Fatalf("expected wrapped config error, got: %v", err)
+	}
+}
+
+func TestKeysUpdateChainsCommand(t *testing.T) {
+	const keyPath = "proj-a/prod/alice"
+	t.Setenv("VAULT_TOKEN", "test-vault-token-123")
+	t.Setenv("KMS_GATEWAY_TOKEN", "test-gateway-token-123")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/sys/health":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"initialized":true,"sealed":false,"standby":false}`))
+		case "/v1/kms/keys/" + keyPath:
+			if r.Method != http.MethodPost && r.Method != http.MethodPut {
+				http.NotFound(w, r)
+				return
+			}
+			var body map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			addChains, _ := body["add_chains"].(string)
+			if addChains != "cosmos" {
+				http.Error(w, "missing add_chains", http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{
+				"chains": []string{"cosmos", "evm"},
+			}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	t.Setenv("VAULT_ADDR", srv.URL)
+	stdout, stderr, err := executeSplit("--config", filepath.Join(t.TempDir(), "missing.yaml"), "keys", "update-chains", "--path", keyPath, "--add", "cosmos")
+	if err != nil {
+		t.Fatalf("update-chains err=%v stderr=%s", err, stderr)
+	}
+	if got := strings.TrimSpace(stdout); got != `["cosmos","evm"]` {
+		t.Fatalf("stdout=%q stderr=%q", stdout, stderr)
 	}
 }

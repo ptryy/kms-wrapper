@@ -16,6 +16,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -35,8 +36,10 @@ import (
 type HealthChecker interface{ Health() error }
 
 type KeyStore interface {
-	CreateKey(ctx context.Context, path string) error
+	CreateKey(ctx context.Context, path string, chains []string) error
+	UpdateKeyChains(ctx context.Context, path string, addChains []string) ([]string, error)
 	GetPublicKey(ctx context.Context, path string) ([]byte, error)
+	GetKeyChains(ctx context.Context, path string) ([]string, error)
 	ListKeys(ctx context.Context, prefix string) ([]string, error)
 }
 
@@ -111,6 +114,7 @@ type Server struct {
 	principals     *principalLimiters
 	healthLimiters *principalLimiters
 	healthResp     healthCache
+	chains         *chainsCache
 	serverNonce    []byte
 	trustedProxies []*net.IPNet
 }
@@ -167,6 +171,7 @@ func NewOrFail(cfg config.Config, vault HealthChecker, keys KeyStore, evmSigner 
 		principals:     newPrincipalLimiters(rate.Limit(rl), burst, 10000),
 		healthLimiters: newPrincipalLimiters(rate.Limit(healthRate), healthBurst, 10000),
 		serverNonce:    nonce,
+		chains:         newChainsCache(cfg.Gateway.ChainsCacheTTL),
 		trustedProxies: trusted,
 	}
 	s.server = &http.Server{
@@ -244,6 +249,7 @@ func (s *Server) appRoutes() []routeEntry {
 		{http.MethodPost, "/sign/evm", s.rateLimit(s.auth(http.HandlerFunc(s.signEVM)))},
 		{http.MethodPost, "/sign/cosmos", s.rateLimit(s.auth(http.HandlerFunc(s.signCosmos)))},
 		{http.MethodPost, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.createKey)))},
+		{http.MethodPatch, "/keys/{path...}", s.rateLimit(s.auth(http.HandlerFunc(s.updateKeyChains)))},
 		{http.MethodGet, "/keys/info", s.rateLimit(s.auth(http.HandlerFunc(s.showKey)))},
 		{http.MethodGet, "/keys", s.rateLimit(s.auth(http.HandlerFunc(s.listKeys)))},
 	}
@@ -368,7 +374,6 @@ func normalizeSwaggerDocServers(doc, origin string) ([]byte, error) {
 	}
 	return json.Marshal(spec)
 }
-
 
 func (s *Server) requestLogger(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -513,6 +518,12 @@ func (s *Server) signEVM(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "key_path is required")
 		return
 	}
+	// Validate before authorizeChain so a malformed key_path returns 400, not a
+	// 503 from GetKeyChains' internal validation (consistent with createKey/showKey).
+	if err := vault.ValidateKeyPath(req.KeyPath); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	switch req.Type {
 	case "raw_tx":
 		s.signEVMRawTx(w, r, &req)
@@ -540,6 +551,10 @@ func (s *Server) signEVMRawTx(w http.ResponseWriter, r *http.Request, req *appty
 	raw, err := decodeHex(req.RawTx)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "raw_tx must be hex")
+		return
+	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
 		return
 	}
 	out, err := s.evm.SignRawTx(r.Context(), req.KeyPath, big.NewInt(req.ChainID), raw)
@@ -572,6 +587,10 @@ func (s *Server) signEVMPersonal(w http.ResponseWriter, r *http.Request, req *ap
 		writeError(w, http.StatusBadRequest, "personal_message must be hex")
 		return
 	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
+		return
+	}
 	sig, err := s.evm.SignPersonalMessage(r.Context(), req.KeyPath, msg)
 	if err != nil {
 		slog.ErrorContext(r.Context(), "personal message signing failed", "error", err, "key_path", req.KeyPath)
@@ -595,6 +614,10 @@ func (s *Server) signEVMEIP712(w http.ResponseWriter, r *http.Request, req *appt
 	}
 	if len(digest) != 32 {
 		writeError(w, http.StatusBadRequest, "eip712_digest must be exactly 32 bytes")
+		return
+	}
+	allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainEVM)
+	if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainEVM, allowed, status, authzErr) {
 		return
 	}
 	sig, err := s.evm.SignEIP712Digest(r.Context(), req.KeyPath, digest)
@@ -631,6 +654,12 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "key_path is required")
 		return
 	}
+	// Validate before authorizeChain so a malformed key_path returns 400, not a
+	// 503 from GetKeyChains' internal validation (consistent with createKey/showKey).
+	if err := vault.ValidateKeyPath(req.KeyPath); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	hrp := req.HRP
 	if hrp == "" {
 		hrp = "cosmos"
@@ -642,9 +671,17 @@ func (s *Server) signCosmos(w http.ResponseWriter, r *http.Request) {
 		var doc []byte
 		doc, err = base64.StdEncoding.DecodeString(req.SignDoc)
 		if err == nil {
+			allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainCosmos)
+			if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainCosmos, allowed, status, authzErr) {
+				return
+			}
 			sig, pub, err = s.cosmos.SignDirect(r.Context(), req.KeyPath, doc)
 		}
 	case "AMINO_JSON":
+		allowed, status, authzErr := s.authorizeChain(r.Context(), req.KeyPath, apptypes.ChainCosmos)
+		if !s.writeChainAuthzResult(w, r, req.KeyPath, apptypes.ChainCosmos, allowed, status, authzErr) {
+			return
+		}
 		sig, pub, err = s.cosmos.SignAmino(r.Context(), req.KeyPath, []byte(req.SignDoc))
 	default:
 		writeError(w, http.StatusBadRequest, "unsupported sign_mode")
@@ -701,6 +738,15 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	rawChains := make([]string, len(req.Chains))
+	for i, chain := range req.Chains {
+		rawChains[i] = string(chain)
+	}
+	chains, err := apptypes.ParseChains(rawChains)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	alreadyExisted := false
 	if _, err := s.keys.GetPublicKey(r.Context(), req.Path); err == nil {
@@ -710,12 +756,16 @@ func (s *Server) createKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.keys.CreateKey(r.Context(), req.Path); err != nil {
+	createChains := make([]string, len(chains))
+	for i, chain := range chains {
+		createChains[i] = string(chain)
+	}
+	if err := s.keys.CreateKey(r.Context(), req.Path, createChains); err != nil {
 		s.writeVaultErr(w, r, err, req.Path, "CreateKey")
 		return
 	}
 
-	info, err := keyinfo.For(r.Context(), s.keys, req.Path, keyinfo.DefaultHRP)
+	info, err := keyinfo.For(r.Context(), s.keys, req.Path, keyinfo.DefaultHRP, chains)
 	if err != nil {
 		s.writeVaultErr(w, r, err, req.Path, "deriveKeyInfo")
 		return
@@ -751,12 +801,103 @@ func (s *Server) showKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP)
+	rawChains, err := s.keys.GetKeyChains(r.Context(), path)
+	if err != nil {
+		s.writeVaultErr(w, r, err, path, "GetKeyChains")
+		return
+	}
+	chains, err := canonicalizeChains(rawChains)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "persisted chains are not canonical",
+			"error", err, "key_path", path)
+		writeError(w, http.StatusInternalServerError, "invalid persisted chains")
+		return
+	}
+	info, err := keyinfo.For(r.Context(), s.keys, path, keyinfo.DefaultHRP, chains)
 	if err != nil {
 		s.writeVaultErr(w, r, err, path, "GetPublicKey")
 		return
 	}
 	writeJSON(w, info)
+}
+
+// updateKeyChains godoc
+// @Summary Expand a KMS key's chain allow-list
+// @Tags keys
+// @Accept json
+// @Produce json
+// @Param path path string true "Key path (format: {project}/{environment}/{username})" example(proj-a/prod/alice)
+// @Param body body apptypes.KeyUpdateChainsRequest true "Chain expansion payload"
+// @Success 200 {object} apptypes.KeyUpdateChainsResponse
+// @Failure 400 {object} apptypes.ErrorResponse
+// @Failure 401 {object} apptypes.ErrorResponse
+// @Failure 403 {object} apptypes.ErrorResponse
+// @Failure 429 {object} apptypes.ErrorResponse
+// @Failure 500 {object} apptypes.ErrorResponse
+// @Security BearerAuth
+// @Router /v1/keys/{path} [patch]
+func (s *Server) updateKeyChains(w http.ResponseWriter, r *http.Request) {
+	path := r.PathValue("path")
+	if path == "" {
+		writeError(w, http.StatusBadRequest, "path is required")
+		return
+	}
+	if err := vault.ValidateKeyPath(path); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if len(raw) == 0 {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+	if len(raw) != 1 {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+	addRaw, ok := raw["add_chains"]
+	if !ok {
+		writeError(w, http.StatusBadRequest, "only add_chains is supported")
+		return
+	}
+
+	var addChains []string
+	if err := json.Unmarshal(addRaw, &addChains); err != nil {
+		writeError(w, http.StatusBadRequest, "add_chains must be an array of strings")
+		return
+	}
+	parsed, err := apptypes.ParseChains(addChains)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	rawChains := make([]string, len(parsed))
+	for i, chain := range parsed {
+		rawChains[i] = string(chain)
+	}
+	updated, err := s.keys.UpdateKeyChains(r.Context(), path, rawChains)
+	if err != nil {
+		s.writeVaultErr(w, r, err, path, "UpdateKeyChains")
+		return
+	}
+	if s.chains != nil {
+		s.chains.invalidate(path)
+	}
+	chains, err := canonicalizeChains(updated)
+	if err != nil {
+		slog.ErrorContext(r.Context(), "persisted chains are not canonical",
+			"error", err, "key_path", path)
+		writeError(w, http.StatusInternalServerError, "invalid persisted chains")
+		return
+	}
+	writeJSON(w, apptypes.KeyUpdateChainsResponse{Path: path, Chains: chains})
 }
 
 // listKeys godoc
@@ -808,17 +949,88 @@ func (s *Server) listKeys(w http.ResponseWriter, r *http.Request) {
 		end = len(ks)
 	}
 	page := append([]string{}, ks[offset:end]...)
+	entries := make([]apptypes.KeyListEntry, len(page))
+	for i, name := range page {
+		// Vault's LIST returns names relative to the prefix; rejoin so entry.Path
+		// is the fully-qualified key path and the chains lookup below (which needs
+		// {project}/{environment}/{username}) targets the right key.
+		entries[i].Path = joinKeyPath(prefix, name)
+		// Default to an empty array (never null) so the wire schema holds even
+		// when the chain tag read fails below; ChainsAvailable stays false.
+		entries[i].Chains = []apptypes.Chain{}
+	}
+	if len(page) > 0 {
+		jobs := make(chan listKeyChainsJob)
+		workers := listKeyChainsWorkers
+		if len(page) < workers {
+			workers = len(page)
+		}
+		var wg sync.WaitGroup
+		for i := 0; i < workers; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for job := range jobs {
+					ctx, cancel := context.WithTimeout(r.Context(), listKeyChainsTimeout)
+					chains, err := s.keys.GetKeyChains(ctx, job.path)
+					cancel()
+					if err == nil {
+						if parsed, ok := toKeyListChains(chains); ok {
+							entries[job.index].Chains = parsed
+							entries[job.index].ChainsAvailable = true
+						}
+					}
+				}
+			}()
+		}
+		for i := range page {
+			jobs <- listKeyChainsJob{index: i, path: entries[i].Path}
+		}
+		close(jobs)
+		wg.Wait()
+	}
 	next := ""
 	if end < len(ks) {
 		next = encodeListCursor(prefix, end)
 	}
-	writeJSON(w, apptypes.KeyListResponse{Keys: page, Count: len(page), NextCursor: next})
+	writeJSON(w, apptypes.KeyListResponse{Keys: entries, Count: len(entries), NextCursor: next})
 }
 
 const (
-	listLimitDefault = 100
-	listLimitMax     = 1000
+	listLimitDefault     = 100
+	listLimitMax         = 1000
+	listKeyChainsWorkers = 8
+	listKeyChainsTimeout = 2 * time.Second
 )
+
+type listKeyChainsJob struct {
+	index int
+	path  string
+}
+
+// toKeyListChains canonicalizes the raw persisted chains for a list entry.
+// The bool is false when the strings cannot be parsed, so the caller can mark
+// the entry's chains unavailable rather than reporting a bogus allow-list.
+func toKeyListChains(chains []string) ([]apptypes.Chain, bool) {
+	out, err := canonicalizeChains(chains)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+// joinKeyPath reassembles the fully-qualified key path from the list prefix and
+// a name returned by ListKeys. Vault's LIST returns names relative to the
+// prefix, so the bare name (e.g. "alice") is not a valid key path on its own.
+func joinKeyPath(prefix, name string) string {
+	if prefix == "" {
+		return name
+	}
+	if strings.HasSuffix(prefix, "/") {
+		return prefix + name
+	}
+	return prefix + "/" + name
+}
 
 // parseListLimit parses ?limit and clamps it to [1, listLimitMax]. Empty
 // string → listLimitDefault. Negative or non-numeric returns an error so
@@ -904,4 +1116,3 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func decodeHex(s string) ([]byte, error) {
 	return hex.DecodeString(strings.TrimPrefix(s, "0x"))
 }
-

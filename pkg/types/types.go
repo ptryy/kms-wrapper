@@ -1,6 +1,10 @@
 package types
 
-import "errors"
+import (
+	"errors"
+	"sort"
+	"strings"
+)
 
 var (
 	ErrNotFound     = errors.New("not found")
@@ -8,6 +12,51 @@ var (
 	ErrInvalidInput = errors.New("invalid input")
 	ErrBadRequest   = errors.New("bad request")
 )
+
+// Chain is a closed-set signing-capability identifier persisted on a key.
+type Chain string
+
+const (
+	ChainEVM    Chain = "evm"
+	ChainCosmos Chain = "cosmos"
+)
+
+// errChainsSubset is the verbatim message used at create-time validation.
+const errChainsSubset = "chains is required and must be a non-empty subset of [evm, cosmos]"
+
+// ParseChains lowercases, dedupes, sorts, and validates closed-set membership.
+// It rejects an empty result and any unknown member.
+func ParseChains(in []string) ([]Chain, error) {
+	seen := map[Chain]bool{}
+	for _, raw := range in {
+		c := Chain(strings.ToLower(strings.TrimSpace(raw)))
+		switch c {
+		case ChainEVM, ChainCosmos:
+			seen[c] = true
+		default:
+			return nil, errors.New(errChainsSubset)
+		}
+	}
+	if len(seen) == 0 {
+		return nil, errors.New(errChainsSubset)
+	}
+	out := make([]Chain, 0, len(seen))
+	for c := range seen {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
+
+// ChainsContain reports whether c is in chains.
+func ChainsContain(chains []Chain, c Chain) bool {
+	for _, x := range chains {
+		if x == c {
+			return true
+		}
+	}
+	return false
+}
 
 type EVMSignRequest struct {
 	// Type discriminates which payload field is consulted. Required.
@@ -79,14 +128,16 @@ type SignResponse struct {
 }
 
 type KeyInfo struct {
-	Path          string `json:"path"`
-	PublicKeyHex  string `json:"public_key_hex"`
-	EVMAddress    string `json:"evm_address"`
-	CosmosAddress string `json:"cosmos_address"`
+	Path          string  `json:"path"`
+	PublicKeyHex  string  `json:"public_key_hex"`
+	EVMAddress    string  `json:"evm_address,omitempty"`
+	CosmosAddress string  `json:"cosmos_address,omitempty"`
+	Chains        []Chain `json:"chains"`
 }
 
 type KeyCreateRequest struct {
-	Path string `json:"path" binding:"required" example:"proj-a/prod/alice"`
+	Path   string  `json:"path" binding:"required" example:"proj-a/prod/alice"`
+	Chains []Chain `json:"chains" binding:"required" example:"evm,cosmos"`
 }
 
 type KeyCreateResponse struct {
@@ -94,8 +145,27 @@ type KeyCreateResponse struct {
 	AlreadyExisted bool `json:"already_existed" example:"false"`
 }
 
+type KeyListEntry struct {
+	Path string `json:"path"`
+	// Chains is the key's persisted allow-list, always a (possibly empty)
+	// array — never null — so the closed-set enum schema holds for generated
+	// clients. When the chain tag cannot be read in a resilient list,
+	// ChainsAvailable is false and Chains is empty (see resilient list).
+	Chains          []Chain `json:"chains"`
+	ChainsAvailable bool    `json:"chains_available"`
+}
+
+type KeyUpdateChainsRequest struct {
+	AddChains []Chain `json:"add_chains" binding:"required" example:"cosmos"`
+}
+
+type KeyUpdateChainsResponse struct {
+	Path   string  `json:"path"`
+	Chains []Chain `json:"chains"`
+}
+
 type KeyListResponse struct {
-	Keys       []string `json:"keys" example:"prod/alice,staging/bob"`
-	Count      int      `json:"count" example:"2"`
-	NextCursor string   `json:"next_cursor"`
+	Keys       []KeyListEntry `json:"keys"`
+	Count      int            `json:"count" example:"2"`
+	NextCursor string         `json:"next_cursor"`
 }

@@ -23,7 +23,7 @@ cover.out
 .vscode/
 .idea/
 .codegraph/
-
+.continue
 # Logs/temp
 *.log
 tmp/

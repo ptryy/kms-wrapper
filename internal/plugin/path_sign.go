@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/hashicorp/vault/sdk/framework"
@@ -20,6 +22,11 @@ func (b *backend) pathsSign() []*framework.Path {
 				"name": {
 					Type:        framework.TypeString,
 					Description: "Key name to sign with.",
+				},
+				"chain": {
+					Type:        framework.TypeString,
+					Required:    true,
+					Description: "Signing chain to authorize against the key's persisted chain allow-list.",
 				},
 				"input": {
 					Type:        framework.TypeString,
@@ -68,6 +75,29 @@ func (b *backend) handleSign(ctx context.Context, req *logical.Request, data *fr
 		return logical.ErrorResponse("key not found: %s", nameStr), nil
 	}
 
+	chainRaw, ok := data.GetOk("chain")
+	if !ok {
+		return logical.ErrorResponse("chain is required"), logical.ErrInvalidRequest
+	}
+	chain, _ := chainRaw.(string)
+	// Canonicalize before authorization so case/whitespace variants match the
+	// canonical persisted allow-list rather than being spuriously denied.
+	chain = strings.ToLower(strings.TrimSpace(chain))
+	if chain == "" {
+		return logical.ErrorResponse("chain is required"), logical.ErrInvalidRequest
+	}
+
+	allowedChains := append([]string(nil), entry.Chains...)
+	sort.Strings(allowedChains)
+	if !containsChain(allowedChains, chain) {
+		return logical.ErrorResponse(
+			"key %s not authorized for %s signing (allowed chains: [%s])",
+			nameStr,
+			chain,
+			strings.Join(allowedChains, " "),
+		), logical.ErrPermissionDenied
+	}
+
 	priv, err := crypto.ToECDSA(entry.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("decode stored private key: %w", err)
@@ -87,4 +117,13 @@ func (b *backend) handleSign(ctx context.Context, req *logical.Request, data *fr
 			"s": hex.EncodeToString(sig[32:64]),
 		},
 	}, nil
+}
+
+func containsChain(chains []string, chain string) bool {
+	for _, allowed := range chains {
+		if allowed == chain {
+			return true
+		}
+	}
+	return false
 }

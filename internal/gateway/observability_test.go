@@ -92,6 +92,7 @@ func TestMetricsEndpointExposesCollectors(t *testing.T) {
 	kmsHTTPRequestsTotal.WithLabelValues("/test", "GET", "200").Inc()
 	kmsHTTPRequestDuration.WithLabelValues("/test", "GET").Observe(0.001)
 	kmsSigningDuration.WithLabelValues("evm").Observe(0.001)
+	kmsChainAuthzDenialsTotal.WithLabelValues("evm").Inc()
 	kmsRateLimitRejectionsTotal.WithLabelValues("/test").Inc()
 	kmsVaultCallsTotal.WithLabelValues("read", "ok").Inc()
 	kmsVaultCallDuration.WithLabelValues("read").Observe(0.001)
@@ -108,6 +109,7 @@ func TestMetricsEndpointExposesCollectors(t *testing.T) {
 		"kms_http_requests_total",
 		"kms_http_request_duration_seconds",
 		"kms_signing_duration_seconds",
+		"kms_chain_authz_denials_total",
 		"kms_rate_limit_rejections_total",
 		"kms_vault_calls_total",
 		"kms_vault_call_duration_seconds",

@@ -77,6 +77,28 @@ func TestMapVaultErrViaResponseError(t *testing.T) {
 	}
 }
 
+func TestSignMaps403ChainMismatchToPermission(t *testing.T) {
+	c, cleanup := newTypedClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "/kms/sign/") {
+			writeVaultJSONError(w, http.StatusForbidden, "not authorized for cosmos signing")
+			return
+		}
+		http.NotFound(w, r)
+	})
+	defer cleanup()
+
+	_, _, err := c.Sign(context.Background(), "proj/prod/alice", make([]byte, 32), "cosmos")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, types.ErrPermission) {
+		t.Fatalf("errors.Is(%v, %v) = false", err, types.ErrPermission)
+	}
+	if !strings.Contains(err.Error(), "not authorized for cosmos signing") {
+		t.Fatalf("expected preserved message, got %v", err)
+	}
+}
+
 func TestGetPublicKeyCachesPerPath(t *testing.T) {
 	key, _ := crypto.GenerateKey()
 	compressed := crypto.CompressPubkey(&key.PublicKey)
