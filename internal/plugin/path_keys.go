@@ -125,10 +125,11 @@ func (b *backend) handleCreateKey(ctx context.Context, req *logical.Request, dat
 	if existing != nil {
 		if len(existing.Chains) == 0 {
 			// Intentional capability grant, not a fail-closed hole: a legacy key
-			// with no persisted chains still 403s on every sign until someone
-			// with create authority explicitly re-creates it carrying chains.
-			// This repairs such a key in place (idempotent lifecycle), it does
-			// not weaken the sign-time fail-closed guarantee.
+			// with no persisted chains still 403s on every sign until chains are
+			// added — either via update-chains (PATCH, requires update authority)
+			// or by re-creating the key with chains (idempotent create, requires
+			// create authority). This repairs the key in place without weakening
+			// the sign-time fail-closed guarantee.
 			existing.Chains = append([]string(nil), chainsToStrings(parsedChains)...)
 			if err := b.storeKey(ctx, req, name, existing); err != nil {
 				return nil, err
