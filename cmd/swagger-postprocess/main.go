@@ -57,6 +57,7 @@ func loadSpec(path string) (map[string]any, error) {
 func normalizeSpec(spec map[string]any) {
 	spec["openapi"] = "3.0.3"
 	normalizeServers(spec)
+	renameSchemaPrefix(spec, "github_com_ryan-truong_kms-wrapper_pkg_types", "kms-wrapper_pkg_types")
 
 	components, _ := spec["components"].(map[string]any)
 	securitySchemes, _ := components["securitySchemes"].(map[string]any)
@@ -114,10 +115,46 @@ func injectEVMDiscriminator(operation map[string]any) {
 		schema["discriminator"] = map[string]any{
 			"propertyName": "type",
 			"mapping": map[string]any{
-				"raw_tx":           "#/components/schemas/types.EVMSignRawTxRequest",
-				"personal_message": "#/components/schemas/types.EVMSignPersonalMessageRequest",
-				"eip712_digest":    "#/components/schemas/types.EVMSignEIP712Request",
+				"raw_tx":           "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest",
+				"personal_message": "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
+				"eip712_digest":    "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request",
 			},
+		}
+	}
+}
+
+// renameSchemaPrefix renames components.schemas keys from oldPrefix to
+// newPrefix and rewrites every nested $ref that points at them.
+func renameSchemaPrefix(spec map[string]any, oldPrefix, newPrefix string) {
+	components, _ := spec["components"].(map[string]any)
+	if schemas, ok := components["schemas"].(map[string]any); ok {
+		for key, val := range schemas {
+			if strings.HasPrefix(key, oldPrefix+".") {
+				schemas[newPrefix+"."+strings.TrimPrefix(key, oldPrefix+".")] = val
+				delete(schemas, key)
+			}
+		}
+	}
+	oldRef := "#/components/schemas/" + oldPrefix + "."
+	newRef := "#/components/schemas/" + newPrefix + "."
+	rewriteRefs(spec, oldRef, newRef)
+}
+
+// rewriteRefs walks an arbitrary decoded-JSON value and rewrites every
+// string $ref / discriminator-mapping value beginning with oldRef.
+func rewriteRefs(node any, oldRef, newRef string) {
+	switch n := node.(type) {
+	case map[string]any:
+		for k, v := range n {
+			if s, ok := v.(string); ok && strings.HasPrefix(s, oldRef) {
+				n[k] = newRef + strings.TrimPrefix(s, oldRef)
+				continue
+			}
+			rewriteRefs(v, oldRef, newRef)
+		}
+	case []any:
+		for _, v := range n {
+			rewriteRefs(v, oldRef, newRef)
 		}
 	}
 }

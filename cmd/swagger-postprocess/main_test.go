@@ -2,6 +2,62 @@ package main
 
 import "testing"
 
+func TestRenameSchemaPrefix_KeysAndRefs(t *testing.T) {
+	old := "github_com_ryan-truong_kms-wrapper_pkg_types"
+	spec := map[string]any{
+		"components": map[string]any{
+			"schemas": map[string]any{
+				old + ".KeyInfo": map[string]any{"type": "object"},
+				old + ".EVMSignRawTxRequest": map[string]any{
+					"properties": map[string]any{
+						"nested": map[string]any{"$ref": "#/components/schemas/" + old + ".KeyInfo"},
+					},
+				},
+			},
+		},
+		"paths": map[string]any{
+			"/v1/sign/evm": map[string]any{
+				"post": map[string]any{
+					"requestBody": map[string]any{"content": map[string]any{
+						"application/json": map[string]any{"schema": map[string]any{
+							"oneOf": []any{map[string]any{"$ref": "#/components/schemas/" + old + ".EVMSignRawTxRequest"}},
+						}},
+					}},
+				},
+			},
+		},
+	}
+
+	renameSchemaPrefix(spec, old, "kms-wrapper_pkg_types")
+
+	schemas := spec["components"].(map[string]any)["schemas"].(map[string]any)
+	if _, ok := schemas["kms-wrapper_pkg_types.KeyInfo"]; !ok {
+		t.Fatal("KeyInfo key not renamed")
+	}
+	if _, ok := schemas[old+".KeyInfo"]; ok {
+		t.Fatal("old KeyInfo key still present")
+	}
+	nestedRef := schemas["kms-wrapper_pkg_types.EVMSignRawTxRequest"].(map[string]any)["properties"].(map[string]any)["nested"].(map[string]any)["$ref"]
+	if nestedRef != "#/components/schemas/kms-wrapper_pkg_types.KeyInfo" {
+		t.Fatalf("nested $ref not rewritten: %v", nestedRef)
+	}
+	oneOfRef := spec["paths"].(map[string]any)["/v1/sign/evm"].(map[string]any)["post"].(map[string]any)["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["oneOf"].([]any)[0].(map[string]any)["$ref"]
+	if oneOfRef != "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest" {
+		t.Fatalf("oneOf $ref not rewritten: %v", oneOfRef)
+	}
+}
+
+func TestInjectEVMDiscriminator_UsesShortPrefix(t *testing.T) {
+	op := map[string]any{"requestBody": map[string]any{"content": map[string]any{
+		"application/json": map[string]any{"schema": map[string]any{"oneOf": []any{}}},
+	}}}
+	injectEVMDiscriminator(op)
+	mapping := op["requestBody"].(map[string]any)["content"].(map[string]any)["application/json"].(map[string]any)["schema"].(map[string]any)["discriminator"].(map[string]any)["mapping"].(map[string]any)
+	if mapping["raw_tx"] != "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest" {
+		t.Fatalf("raw_tx mapping wrong: %v", mapping["raw_tx"])
+	}
+}
+
 func TestNormalizeServers(t *testing.T) {
 	tests := []struct {
 		name string
