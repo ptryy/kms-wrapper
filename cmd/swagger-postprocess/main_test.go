@@ -56,6 +56,12 @@ func TestInjectEVMDiscriminator_UsesShortPrefix(t *testing.T) {
 	if mapping["raw_tx"] != "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest" {
 		t.Fatalf("raw_tx mapping wrong: %v", mapping["raw_tx"])
 	}
+	if mapping["personal_message"] != "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest" {
+		t.Fatalf("personal_message mapping wrong: %v", mapping["personal_message"])
+	}
+	if mapping["eip712_digest"] != "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request" {
+		t.Fatalf("eip712_digest mapping wrong: %v", mapping["eip712_digest"])
+	}
 }
 
 func TestNormalizeServers(t *testing.T) {
