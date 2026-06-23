@@ -73,7 +73,7 @@ type methodNotAllowedRewriter struct {
 
 func (w *methodNotAllowedRewriter) WriteHeader(status int) {
 	if status == http.StatusMethodNotAllowed {
-		h := w.ResponseWriter.Header()
+		h := w.Header()
 		// Preserve the `Allow` header set by http.ServeMux. Per RFC 7231
 		// §6.5.5 a 405 response MUST include `Allow`; the rewriter only
 		// replaces the body, never the headers that classify the failure.
@@ -324,10 +324,6 @@ func (s *Server) instrumentRoutes(next http.Handler) http.Handler {
 		next.ServeHTTP(sw, r)
 		path := r.URL.Path
 		method := r.Method
-		status := http.StatusText(sw.status)
-		if status == "" {
-			status = "unknown"
-		}
 		kmsHTTPRequestsTotal.WithLabelValues(path, method, intToStatusLabel(sw.status)).Inc()
 		kmsHTTPRequestDuration.WithLabelValues(path, method).Observe(time.Since(start).Seconds())
 	})

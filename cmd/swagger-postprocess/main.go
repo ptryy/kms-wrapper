@@ -32,11 +32,11 @@ func run() error {
 	}
 	jsonBytes = append(jsonBytes, '\n')
 
-	if err := os.WriteFile("docs/swagger.json", jsonBytes, 0o644); err != nil {
+	if err := os.WriteFile("docs/swagger.json", jsonBytes, 0o600); err != nil {
 		return fmt.Errorf("write docs/swagger.json: %w", err)
 	}
 	// JSON is valid YAML, so keep swagger.yaml in sync deterministically.
-	if err := os.WriteFile("docs/swagger.yaml", jsonBytes, 0o644); err != nil {
+	if err := os.WriteFile("docs/swagger.yaml", jsonBytes, 0o600); err != nil {
 		return fmt.Errorf("write docs/swagger.yaml: %w", err)
 	}
 	if err := rewriteDocTemplate("docs/docs.go", jsonBytes); err != nil {
@@ -47,7 +47,7 @@ func run() error {
 }
 
 func loadSpec(path string) (map[string]any, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) //nolint:gosec // path is a build-time codegen input (this is a generator tool, not a server), not untrusted user input
 	if err != nil {
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -334,7 +334,7 @@ func normalizeSchema(schema map[string]any) {
 }
 
 func rewriteDocTemplate(path string, spec []byte) error {
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(path) //nolint:gosec // path is a build-time codegen input (this is a generator tool, not a server), not untrusted user input
 	if err != nil {
 		return fmt.Errorf("read %s: %w", path, err)
 	}
@@ -357,7 +357,7 @@ func rewriteDocTemplate(path string, spec []byte) error {
 	builder.Write(spec)
 	builder.WriteString(data[end:])
 
-	if err := os.WriteFile(path, []byte(builder.String()), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(builder.String()), 0o600); err != nil {
 		return fmt.Errorf("write %s: %w", path, err)
 	}
 	return nil

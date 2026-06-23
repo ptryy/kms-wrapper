@@ -131,7 +131,7 @@ func newGatewayHandlerWithKeys(ks KeyStore, opts ...func(*config.Config)) http.H
 }
 
 func doRequest(h http.Handler, method, path string, body []byte, auth bool) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, path, bytes.NewReader(body))
+	req := httptest.NewRequestWithContext(context.Background(), method, path, bytes.NewReader(body))
 	if auth {
 		req.Header.Set("Authorization", "Bearer secret")
 	}

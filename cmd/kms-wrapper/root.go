@@ -58,7 +58,7 @@ func NewRootCommand() *cobra.Command {
 func (s *cliState) load(warnOut io.Writer) error {
 	cfg, err := config.Load(expandHome(s.configPath), func(msg string) {
 		if warnOut != nil {
-			fmt.Fprintln(warnOut, msg)
+			_, _ = fmt.Fprintln(warnOut, msg)
 		}
 	})
 	if err != nil {
@@ -110,7 +110,7 @@ func guardWeakVaultToken(token string, warnOut io.Writer) error {
 		return errors.New("refusing to start with weak vault token; set KMS_DEV=true for local dev")
 	}
 	if warnOut != nil {
-		fmt.Fprintln(warnOut, "warn: running with weak vault token (KMS_DEV=true)")
+		_, _ = fmt.Fprintln(warnOut, "warn: running with weak vault token (KMS_DEV=true)")
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func guardWeakGatewayToken(token string, warnOut io.Writer) error {
 		return errors.New("refusing to start with weak gateway token; set KMS_DEV=true for local dev")
 	}
 	if warnOut != nil {
-		fmt.Fprintln(warnOut, "warn: running with weak gateway token (KMS_DEV=true)")
+		_, _ = fmt.Fprintln(warnOut, "warn: running with weak gateway token (KMS_DEV=true)")
 	}
 	return nil
 }
@@ -213,7 +213,7 @@ func guardSwaggerNonLoopback(cfg config.Config, warnOut io.Writer) error {
 		return errors.New("refusing to expose unauthenticated swagger on non-loopback address; set KMS_DEV=true for local dev")
 	}
 	if warnOut != nil {
-		fmt.Fprintln(warnOut, "warn: running with unauthenticated swagger on non-loopback (KMS_DEV=true)")
+		_, _ = fmt.Fprintln(warnOut, "warn: running with unauthenticated swagger on non-loopback (KMS_DEV=true)")
 	}
 	return nil
 }
@@ -305,7 +305,7 @@ func keysCmd(st *cliState) *cobra.Command {
 				return err
 			}
 			for _, k := range ks {
-				fmt.Fprintln(cmd.OutOrStdout(), k)
+				_, _ = fmt.Fprintln(cmd.OutOrStdout(), k)
 			}
 			return nil
 		},
@@ -376,7 +376,7 @@ func signEVMCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "0x%x\n", out)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "0x%x\n", out)
 			return nil
 		},
 	}
@@ -423,12 +423,12 @@ func signCosmosCmd(st *cliState) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("sign cosmos: %w", err)
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "signature: %s\npub_key: %s\n",
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "signature: %s\npub_key: %s\n",
 				base64.StdEncoding.EncodeToString(sig),
 				base64.StdEncoding.EncodeToString(pub),
 			)
 			if addr, derr := cosmossigner.DeriveCosmosAddressFromCompressed(pub, hrp); derr == nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "cosmos_address: %s\n", addr)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "cosmos_address: %s\n", addr)
 			}
 			return nil
 		},
@@ -446,18 +446,18 @@ func healthCmd(st *cliState) *cobra.Command {
 		Short: "check Vault health",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := st.load(cmd.ErrOrStderr()); err != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "Config: INVALID (%s)\n", err)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Config: INVALID (%s)\n", err)
 				return fmt.Errorf("config error: %w", err)
 			}
 			c, err := vault.NewClient(st.cfg.Vault.Addr, vault.TokenAuthProvider{TokenValue: st.cfg.Vault.Token})
 			if err != nil || c.Health() != nil {
-				fmt.Fprintf(cmd.OutOrStdout(), "Vault: UNREACHABLE (%s)\n", st.cfg.Vault.Addr)
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Vault: UNREACHABLE (%s)\n", st.cfg.Vault.Addr)
 				if err != nil {
 					return err
 				}
 				return errors.New("vault unreachable")
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Vault: OK (%s)\n", st.cfg.Vault.Addr)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "Vault: OK (%s)\n", st.cfg.Vault.Addr)
 			return nil
 		},
 	}

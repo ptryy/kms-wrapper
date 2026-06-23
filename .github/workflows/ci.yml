@@ -18,9 +18,9 @@ jobs:
       - name: swagger-check
         run: make swagger-check
       - run: go vet ./...
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.63.4
+          version: v2.12.2
       - run: go test ./...
       - name: govulncheck
         run: |

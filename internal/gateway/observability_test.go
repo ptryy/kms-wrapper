@@ -139,7 +139,7 @@ func TestRequestMetricIncrementsOnSign(t *testing.T) {
 
 func TestRequestIDPreservedAndEchoed(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodGet, "/livez", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil)
 	req.Header.Set("X-Request-ID", "my-trace-id-123")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -150,7 +150,7 @@ func TestRequestIDPreservedAndEchoed(t *testing.T) {
 
 func TestRequestIDGeneratedIfMissing(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodGet, "/livez", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	got := rr.Header().Get("X-Request-ID")
@@ -164,7 +164,7 @@ func TestRequestIDGeneratedIfMissing(t *testing.T) {
 
 func TestRequestIDMalformedReplaced(t *testing.T) {
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodGet, "/livez", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/livez", nil)
 	// Inject characters that fail the [A-Za-z0-9._-]{1,128} pattern.
 	req.Header.Set("X-Request-ID", "bad id with <html>")
 	rr := httptest.NewRecorder()
@@ -202,7 +202,7 @@ func (panickyHandler) ServeHTTP(http.ResponseWriter, *http.Request) {
 func TestPanicRecoveryReturns500WithRequestID(t *testing.T) {
 	before := testutil.ToFloat64(kmsPanicsTotal.WithLabelValues("/panic-test"))
 	wrapped := requestID(recoverPanic(panickyHandler{}))
-	req := httptest.NewRequest(http.MethodGet, "/panic-test", nil)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/panic-test", nil)
 	rr := httptest.NewRecorder()
 	wrapped.ServeHTTP(rr, req)
 	if rr.Code != http.StatusInternalServerError {
