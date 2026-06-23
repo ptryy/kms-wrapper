@@ -1,0 +1,11 @@
+# build outputs
+bin/
+kms-wrapper
+vault/plugins/kms-vault-plugin
+
+# dev / docs artifacts
+*.html
+testing-results.md
+testing-guide.md
+docs/archive/
+docs/superpowers/
