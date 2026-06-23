@@ -3,6 +3,10 @@ bin/
 kms-wrapper
 vault/plugins/kms-vault-plugin
 
+# secrets / environment
+.env
+.env.*
+
 # dev / docs artifacts
 *.html
 testing-results.md
