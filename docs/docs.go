@@ -7,7 +7,7 @@ import "github.com/swaggo/swag/v2"
 const docTemplate = `{
     "components": {
         "schemas": {
-            "github_com_ryan-truong_kms-wrapper_pkg_types.Chain": {
+            "kms-wrapper_pkg_types.Chain": {
                 "enum": [
                     "evm",
                     "cosmos"
@@ -18,7 +18,7 @@ const docTemplate = `{
                     "ChainCosmos"
                 ]
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.CosmosSignRequest": {
+            "kms-wrapper_pkg_types.CosmosSignRequest": {
                 "properties": {
                     "hrp": {
                         "type": "string"
@@ -46,7 +46,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignEIP712Request": {
+            "kms-wrapper_pkg_types.EVMSignEIP712Request": {
                 "properties": {
                     "eip712_digest": {
                         "pattern": "^(0x)?[0-9a-fA-F]{64}$",
@@ -63,7 +63,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignPersonalMessageRequest": {
+            "kms-wrapper_pkg_types.EVMSignPersonalMessageRequest": {
                 "properties": {
                     "key_path": {
                         "example": "proj-a/prod/alice",
@@ -80,7 +80,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignRawTxRequest": {
+            "kms-wrapper_pkg_types.EVMSignRawTxRequest": {
                 "properties": {
                     "chain_id": {
                         "example": 1,
@@ -103,7 +103,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse": {
+            "kms-wrapper_pkg_types.ErrorResponse": {
                 "properties": {
                     "error": {
                         "example": "unauthorized",
@@ -115,7 +115,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest": {
+            "kms-wrapper_pkg_types.KeyCreateRequest": {
                 "properties": {
                     "chains": {
                         "example": [
@@ -123,7 +123,7 @@ const docTemplate = `{
                             "cosmos"
                         ],
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -139,7 +139,7 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateResponse": {
+            "kms-wrapper_pkg_types.KeyCreateResponse": {
                 "properties": {
                     "already_existed": {
                         "example": false,
@@ -147,7 +147,7 @@ const docTemplate = `{
                     },
                     "chains": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -167,11 +167,11 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyInfo": {
+            "kms-wrapper_pkg_types.KeyInfo": {
                 "properties": {
                     "chains": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -191,12 +191,12 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListEntry": {
+            "kms-wrapper_pkg_types.KeyListEntry": {
                 "properties": {
                     "chains": {
                         "description": "Chains is the key's persisted allow-list, always a (possibly empty)\narray — never null — so the closed-set enum schema holds for generated\nclients. When the chain tag cannot be read in a resilient list,\nChainsAvailable is false and Chains is empty (see resilient list).",
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -210,7 +210,7 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyListResponse": {
+            "kms-wrapper_pkg_types.KeyListResponse": {
                 "properties": {
                     "count": {
                         "example": 2,
@@ -218,7 +218,7 @@ const docTemplate = `{
                     },
                     "keys": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyListEntry"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyListEntry"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -229,14 +229,14 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsRequest": {
+            "kms-wrapper_pkg_types.KeyUpdateChainsRequest": {
                 "properties": {
                     "add_chains": {
                         "example": [
                             "cosmos"
                         ],
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -247,11 +247,11 @@ const docTemplate = `{
                 ],
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsResponse": {
+            "kms-wrapper_pkg_types.KeyUpdateChainsResponse": {
                 "properties": {
                     "chains": {
                         "items": {
-                            "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.Chain"
+                            "$ref": "#/components/schemas/kms-wrapper_pkg_types.Chain"
                         },
                         "type": "array",
                         "uniqueItems": false
@@ -262,7 +262,7 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse": {
+            "kms-wrapper_pkg_types.SignResponse": {
                 "properties": {
                     "cosmos_address": {
                         "type": "string"
@@ -274,7 +274,7 @@ const docTemplate = `{
                         "type": "string"
                     },
                     "signature_parts": {
-                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignatureParts"
+                        "$ref": "#/components/schemas/kms-wrapper_pkg_types.SignatureParts"
                     },
                     "signed_tx": {
                         "type": "string"
@@ -282,7 +282,7 @@ const docTemplate = `{
                 },
                 "type": "object"
             },
-            "github_com_ryan-truong_kms-wrapper_pkg_types.SignatureParts": {
+            "kms-wrapper_pkg_types.SignatureParts": {
                 "properties": {
                     "r": {
                         "type": "string"
@@ -371,7 +371,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyListResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyListResponse"
                                 }
                             }
                         },
@@ -381,7 +381,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -391,7 +391,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -401,7 +401,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -411,7 +411,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -433,7 +433,7 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateRequest",
+                                "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyCreateRequest",
                                 "description": "Key create payload",
                                 "summary": "body"
                             }
@@ -447,7 +447,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyCreateResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyCreateResponse"
                                 }
                             }
                         },
@@ -457,7 +457,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -467,7 +467,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -477,7 +477,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -487,7 +487,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -497,7 +497,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -534,7 +534,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyInfo"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyInfo"
                                 }
                             }
                         },
@@ -544,7 +544,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -554,7 +554,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -564,7 +564,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -574,7 +574,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -584,7 +584,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -594,7 +594,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -630,7 +630,7 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsRequest",
+                                "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyUpdateChainsRequest",
                                 "description": "Chain expansion payload",
                                 "summary": "body"
                             }
@@ -644,7 +644,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.KeyUpdateChainsResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.KeyUpdateChainsResponse"
                                 }
                             }
                         },
@@ -654,7 +654,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -664,7 +664,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -674,7 +674,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -684,7 +684,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -694,7 +694,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -718,7 +718,7 @@ const docTemplate = `{
                     "content": {
                         "application/json": {
                             "schema": {
-                                "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.CosmosSignRequest",
+                                "$ref": "#/components/schemas/kms-wrapper_pkg_types.CosmosSignRequest",
                                 "description": "Cosmos sign payload",
                                 "summary": "body"
                             }
@@ -732,7 +732,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.SignResponse"
                                 }
                             }
                         },
@@ -742,7 +742,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -752,7 +752,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -762,7 +762,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -772,7 +772,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -798,25 +798,25 @@ const docTemplate = `{
                             "schema": {
                                 "discriminator": {
                                     "mapping": {
-                                        "eip712_digest": "#/components/schemas/types.EVMSignEIP712Request",
-                                        "personal_message": "#/components/schemas/types.EVMSignPersonalMessageRequest",
-                                        "raw_tx": "#/components/schemas/types.EVMSignRawTxRequest"
+                                        "eip712_digest": "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request",
+                                        "personal_message": "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
+                                        "raw_tx": "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest"
                                     },
                                     "propertyName": "type"
                                 },
                                 "oneOf": [
                                     {
-                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignRawTxRequest",
+                                        "$ref": "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest",
                                         "description": "Raw-transaction payload",
                                         "summary": "rawTx"
                                     },
                                     {
-                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
+                                        "$ref": "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
                                         "description": "Personal-message payload",
                                         "summary": "personalMessage"
                                     },
                                     {
-                                        "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.EVMSignEIP712Request",
+                                        "$ref": "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request",
                                         "description": "EIP-712 digest payload",
                                         "summary": "eip712"
                                     }
@@ -832,7 +832,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.SignResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.SignResponse"
                                 }
                             }
                         },
@@ -842,7 +842,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -852,7 +852,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -862,7 +862,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },
@@ -872,7 +872,7 @@ const docTemplate = `{
                         "content": {
                             "application/json": {
                                 "schema": {
-                                    "$ref": "#/components/schemas/github_com_ryan-truong_kms-wrapper_pkg_types.ErrorResponse"
+                                    "$ref": "#/components/schemas/kms-wrapper_pkg_types.ErrorResponse"
                                 }
                             }
                         },

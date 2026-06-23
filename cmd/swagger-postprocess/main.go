@@ -22,6 +22,10 @@ func run() error {
 
 	normalizeSpec(spec)
 
+	if err := validateSpecRefs(spec); err != nil {
+		return err
+	}
+
 	jsonBytes, err := json.MarshalIndent(spec, "", "    ")
 	if err != nil {
 		return fmt.Errorf("marshal spec: %w", err)
@@ -57,6 +61,7 @@ func loadSpec(path string) (map[string]any, error) {
 func normalizeSpec(spec map[string]any) {
 	spec["openapi"] = "3.0.3"
 	normalizeServers(spec)
+	renameSchemaPrefix(spec, "github_com_ryan-truong_kms-wrapper_pkg_types", "kms-wrapper_pkg_types")
 
 	components, _ := spec["components"].(map[string]any)
 	securitySchemes, _ := components["securitySchemes"].(map[string]any)
@@ -114,12 +119,92 @@ func injectEVMDiscriminator(operation map[string]any) {
 		schema["discriminator"] = map[string]any{
 			"propertyName": "type",
 			"mapping": map[string]any{
-				"raw_tx":           "#/components/schemas/types.EVMSignRawTxRequest",
-				"personal_message": "#/components/schemas/types.EVMSignPersonalMessageRequest",
-				"eip712_digest":    "#/components/schemas/types.EVMSignEIP712Request",
+				"raw_tx":           "#/components/schemas/kms-wrapper_pkg_types.EVMSignRawTxRequest",
+				"personal_message": "#/components/schemas/kms-wrapper_pkg_types.EVMSignPersonalMessageRequest",
+				"eip712_digest":    "#/components/schemas/kms-wrapper_pkg_types.EVMSignEIP712Request",
 			},
 		}
 	}
+}
+
+// renameSchemaPrefix renames components.schemas keys from oldPrefix to
+// newPrefix and rewrites every nested $ref that points at them.
+func renameSchemaPrefix(spec map[string]any, oldPrefix, newPrefix string) {
+	components, _ := spec["components"].(map[string]any)
+	if schemas, ok := components["schemas"].(map[string]any); ok {
+		for key, val := range schemas {
+			if strings.HasPrefix(key, oldPrefix+".") {
+				schemas[newPrefix+"."+strings.TrimPrefix(key, oldPrefix+".")] = val
+				delete(schemas, key)
+			}
+		}
+	}
+	oldRef := "#/components/schemas/" + oldPrefix + "."
+	newRef := "#/components/schemas/" + newPrefix + "."
+	rewriteRefs(spec, oldRef, newRef)
+}
+
+// rewriteRefs walks an arbitrary decoded-JSON value and rewrites every
+// string $ref / discriminator-mapping value beginning with oldRef.
+func rewriteRefs(node any, oldRef, newRef string) {
+	switch n := node.(type) {
+	case map[string]any:
+		for k, v := range n {
+			if s, ok := v.(string); ok && strings.HasPrefix(s, oldRef) {
+				n[k] = newRef + strings.TrimPrefix(s, oldRef)
+				continue
+			}
+			rewriteRefs(v, oldRef, newRef)
+		}
+	case []any:
+		for _, v := range n {
+			rewriteRefs(v, oldRef, newRef)
+		}
+	}
+}
+
+// validateSpecRefs fails if any discriminator.mapping $ref does not resolve
+// to an existing components.schemas key. Guards against swag output drift
+// silently re-breaking codegen.
+func validateSpecRefs(spec map[string]any) error {
+	components, _ := spec["components"].(map[string]any)
+	schemas, _ := components["schemas"].(map[string]any)
+	exists := func(ref string) bool {
+		const p = "#/components/schemas/"
+		if !strings.HasPrefix(ref, p) {
+			return true // not a local schema ref; not our concern
+		}
+		_, ok := schemas[strings.TrimPrefix(ref, p)]
+		return ok
+	}
+	var bad []string
+	var walk func(any)
+	walk = func(node any) {
+		switch n := node.(type) {
+		case map[string]any:
+			if disc, ok := n["discriminator"].(map[string]any); ok {
+				if mapping, ok := disc["mapping"].(map[string]any); ok {
+					for k, v := range mapping {
+						if s, ok := v.(string); ok && !exists(s) {
+							bad = append(bad, k+" -> "+s)
+						}
+					}
+				}
+			}
+			for _, v := range n {
+				walk(v)
+			}
+		case []any:
+			for _, v := range n {
+				walk(v)
+			}
+		}
+	}
+	walk(spec)
+	if len(bad) > 0 {
+		return fmt.Errorf("dangling discriminator mapping refs: %s", strings.Join(bad, ", "))
+	}
+	return nil
 }
 
 func normalizeServers(spec map[string]any) {
