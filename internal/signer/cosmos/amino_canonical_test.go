@@ -2,7 +2,6 @@ package cosmos
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"math/big"
@@ -48,12 +47,6 @@ func TestSignAminoCanonicalMatchesUnmarshalMarshalRoundtrip(t *testing.T) {
 	want, _ := json.Marshal(v)
 	if string(got) != string(want) {
 		t.Fatalf("canonical mismatch:\n got=%s\nwant=%s", got, want)
-	}
-
-	// Sanity: the digest of the canonical bytes is what we'd hand to Vault.
-	d := sha256.Sum256(got)
-	if len(d) != 32 {
-		t.Fatalf("digest length wrong")
 	}
 }
 

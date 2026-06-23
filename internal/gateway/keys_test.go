@@ -196,7 +196,7 @@ func TestCreateKeyGenericVaultError(t *testing.T) {
 	if rr.Body.String() != "{\"error\":\"vault error\"}\n" {
 		t.Fatalf("body=%s", rr.Body.String())
 	}
-	if string(rr.Body.Bytes()) == boom.Error() {
+	if rr.Body.String() == boom.Error() {
 		t.Fatalf("raw vault error leaked into response")
 	}
 }

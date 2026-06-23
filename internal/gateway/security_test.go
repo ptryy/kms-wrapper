@@ -68,10 +68,6 @@ func TestRateLimitMapEviction(t *testing.T) {
 
 func TestHealthRateLimitedAndCached(t *testing.T) {
 	var healthCalls atomic.Int64
-	h := newGatewayHandlerWithKeys(keyStoreMock{}, func(cfg *config.Config) {
-		cfg.Gateway.HealthRateLimit = 5
-		cfg.Gateway.HealthRateBurst = 5
-	})
 
 	// Wrap the healthMock so we can count Vault round-trips. We rebuild the
 	// gateway with the counting health checker.
@@ -85,7 +81,7 @@ func TestHealthRateLimitedAndCached(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOrFail: %v", err)
 	}
-	h = srv.Handler()
+	h := srv.Handler()
 
 	allowed, limited := 0, 0
 	for i := 0; i < 30; i++ {
