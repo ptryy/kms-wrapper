@@ -12,7 +12,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"github.com/ethereum/go-ethereum/crypto"
-	"golang.org/x/crypto/ripemd160"
+	"golang.org/x/crypto/ripemd160" //nolint:gosec // ripemd160 is mandated by the Cosmos address scheme (bech32 of RIPEMD160(SHA256(pubkey))); it is protocol-required, not a discretionary hash choice
 	"google.golang.org/protobuf/encoding/protowire"
 
 	apptypes "github.com/ryan-truong/kms-wrapper/pkg/types"
@@ -68,7 +68,7 @@ func DeriveCosmosAddressFromCompressed(compressed []byte, hrp string) (string, e
 
 func deriveFromCompressed(compressed []byte, hrp string) (string, error) {
 	sha := sha256.Sum256(compressed)
-	h := ripemd160.New()
+	h := ripemd160.New() //nolint:gosec // ripemd160 is mandated by the Cosmos address scheme; required for correct address derivation
 	_, _ = h.Write(sha[:])
 	addr, err := bech32.ConvertAndEncode(hrp, h.Sum(nil))
 	if err != nil {
