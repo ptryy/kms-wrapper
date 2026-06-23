@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"log/slog"
 	"net/http"
@@ -23,7 +24,7 @@ func TestRateLimitPerPrincipal(t *testing.T) {
 	})
 
 	doSign := func(token string) int {
-		req := httptest.NewRequest(http.MethodPost, "/sign/evm",
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sign/evm",
 			strings.NewReader(`{"type":"personal_message","key_path":"proj/prod/alice","personal_message":"0x6869"}`))
 		req.Header.Set("Authorization", "Bearer "+token)
 		// We need the auth middleware to accept the token, so override Gateway.Token to "secret".
@@ -85,7 +86,7 @@ func TestHealthRateLimitedAndCached(t *testing.T) {
 
 	allowed, limited := 0, 0
 	for i := 0; i < 30; i++ {
-		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)
 		req.RemoteAddr = "10.0.0.1:1000"
 		rr := httptest.NewRecorder()
 		h.ServeHTTP(rr, req)
@@ -118,7 +119,7 @@ func TestAuthMissingHeaderLogsReason(t *testing.T) {
 	defer slog.SetDefault(prev)
 
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 	if rr.Code != http.StatusUnauthorized {
@@ -136,7 +137,7 @@ func TestAuthBadFormatLogsReason(t *testing.T) {
 	defer slog.SetDefault(prev)
 
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
 	req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -156,7 +157,7 @@ func TestAuthMismatchDoesNotLogToken(t *testing.T) {
 
 	supplied := "supersecret-attacker-token-AAAAAAAA"
 	h := newGatewayHandlerWithKeys(keyStoreMock{})
-	req := httptest.NewRequest(http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/sign/evm", strings.NewReader(`{}`))
 	req.Header.Set("Authorization", "Bearer "+supplied)
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
@@ -183,7 +184,7 @@ func TestTrustedProxyResolvesOrigin(t *testing.T) {
 	}
 
 	// Untrusted peer: forwarded headers ignored, scheme falls back to http.
-	r := httptest.NewRequest(http.MethodGet, "http://example.com/swagger/doc.json", nil)
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/swagger/doc.json", nil)
 	r.RemoteAddr = "192.0.2.1:1000"
 	r.Header.Set("X-Forwarded-Proto", "https")
 	r.Header.Set("X-Forwarded-Host", "attacker.example")
@@ -192,7 +193,7 @@ func TestTrustedProxyResolvesOrigin(t *testing.T) {
 	}
 
 	// Trusted peer: forwarded headers honoured.
-	r2 := httptest.NewRequest(http.MethodGet, "http://example.com/swagger/doc.json", nil)
+	r2 := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://example.com/swagger/doc.json", nil)
 	r2.RemoteAddr = "10.0.0.5:1000"
 	r2.Header.Set("X-Forwarded-Proto", "https")
 	r2.Header.Set("X-Forwarded-Host", "api.example.com")
@@ -207,7 +208,7 @@ func TestTrustedProxyResolvesOrigin(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewOrFail: %v", err)
 	}
-	r3 := httptest.NewRequest(http.MethodGet, "http://other.host/swagger/doc.json", nil)
+	r3 := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "http://other.host/swagger/doc.json", nil)
 	r3.RemoteAddr = "192.0.2.5:1000"
 	if got := srv2.resolveOrigin(r3); got != "https://kms.example.com" {
 		t.Fatalf("public_url: got %q", got)
@@ -249,7 +250,7 @@ func TestPrincipalKeyHexEncodes(t *testing.T) {
 	cfg.Gateway.Token = "secret"
 	cfg.Gateway.SwaggerAuth = false
 	srv, _ := NewOrFail(cfg, healthMock{}, keyStoreMock{}, evmMock{}, cosmosMock{})
-	r := httptest.NewRequest(http.MethodGet, "/keys", nil)
+	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/keys", nil)
 	r.Header.Set("Authorization", "Bearer secret")
 	r.RemoteAddr = "10.0.0.1:1000"
 	key := srv.principalKey(r)
