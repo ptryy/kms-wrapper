@@ -1,10 +1,6 @@
 name: CI
 
 on:
-  # push:
-  #   branches: [main, "openspec/**"]
-  # pull_request:
-  #   branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -17,6 +13,8 @@ jobs:
           go-version-file: go.mod
       - name: Install swag CLI
         run: go install github.com/swaggo/swag/v2/cmd/swag@v2.0.0-rc5
+      - name: Download modules
+        run: go mod download
       - name: swagger-check
         run: make swagger-check
       - run: go vet ./...
@@ -28,3 +26,30 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Download modules
+        run: go mod download
+      - name: Build gateway binary
+        run: make build
+      - name: Build Vault plugin
+        run: make build-plugin
+      - name: Upload gateway binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kms-wrapper
+          path: bin/kms-wrapper
+          retention-days: 7
+      - name: Upload Vault plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: kms-vault-plugin
+          path: vault/plugins/kms-vault-plugin
+          retention-days: 7
