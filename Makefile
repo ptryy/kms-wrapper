@@ -25,8 +25,10 @@ swagger-check: swagger
 	@git diff --exit-code docs/ || (echo "swagger docs out of date - run make swagger" && exit 1)
 
 dev-up: build-plugin
-	docker compose up -d
-	./vault/init.sh
+	docker compose up -d --build
+	KMS_DEV=true ./vault/init.sh
+	@echo "==> stack ready: gateway http://localhost:3010  vault http://localhost:8200"
+	@echo "    gateway token: dev-token"
 
 dev-down:
 	docker compose down

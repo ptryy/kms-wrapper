@@ -12,3 +12,29 @@ services:
         plugin_directory = "/vault/plugins"
     volumes:
       - ./vault/plugins:/vault/plugins
+    healthcheck:
+      test: ["CMD", "vault", "status", "-address=http://127.0.0.1:8200"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3010:3010"
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+      KMS_VAULT_ADDR: http://vault:8200
+      KMS_VAULT_TOKEN: root
+      KMS_GATEWAY_TOKEN: dev-token
+      KMS_GATEWAY_ADDR: 0.0.0.0:3010
+      KMS_DEV: "true"
+      KMS_GATEWAY_SWAGGER_ENABLED: "true"
+      KMS_GATEWAY_SWAGGER_AUTH: "false"
+    depends_on:
+      vault:
+        condition: service_healthy
