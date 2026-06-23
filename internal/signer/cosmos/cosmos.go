@@ -12,7 +12,7 @@ import (
 
 	"github.com/cosmos/cosmos-sdk/types/bech32"
 	"github.com/ethereum/go-ethereum/crypto"
-	"golang.org/x/crypto/ripemd160" //nolint:gosec // ripemd160 is mandated by the Cosmos address scheme (bech32 of RIPEMD160(SHA256(pubkey))); it is protocol-required, not a discretionary hash choice
+	"golang.org/x/crypto/ripemd160" //nolint:gosec,staticcheck // ripemd160 is mandated by the Cosmos address scheme (bech32 of RIPEMD160(SHA256(pubkey))); it is protocol-required, not a discretionary hash choice
 	"google.golang.org/protobuf/encoding/protowire"
 
 	apptypes "github.com/ryan-truong/kms-wrapper/pkg/types"
