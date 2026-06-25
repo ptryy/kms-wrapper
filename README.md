@@ -1,5 +1,7 @@
 # kms-wrapper
 
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+
 `kms-wrapper` is a Go CLI and REST gateway for multi-chain signing backed by HashiCorp Vault. Keys are managed by a custom Vault secrets plugin, **`kms-vault-plugin`**, that natively supports `secp256k1` for both EVM and Cosmos signing. Private key material never leaves the Vault process boundary.
 
 ## Why a custom plugin (not Transit)?
@@ -174,3 +176,22 @@ vault/
 ## HA / production deployment
 
 Vault OSS HA replicates plugin **registration** and **key data** via Raft, but **not the plugin binary itself**. Every Vault node must have an identical `kms-vault-plugin` binary at the configured `plugin_directory` with a SHA-256 matching the registered value. The recommended pattern is a custom Vault Docker image with the plugin baked in. This is currently a deferred follow-up — see design D2c.
+
+## Contributing
+
+Contributions are welcome. The process is intentionally lightweight:
+
+1. **Open an issue first** for anything non-trivial (bug, feature, design change) so we can align before you spend time on a PR.
+2. **Fork** the repo and create a branch off `main` with a descriptive name (e.g. `feat/cosmos-multisig`, `fix/vault-renewal-race`).
+3. **Follow the code style** — idiomatic Go, `golangci-lint` must pass (`make lint` if wired up, or run it directly). No new linter warnings.
+4. **Write tests.** New behaviour needs WHEN/THEN scenario coverage matching the pattern in `internal/*_test.go`. See `testing-guide.md` for the testing approach.
+5. **Use conventional-commit prefixes** in commit messages: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`. Mark breaking changes with a `BREAKING:` footer.
+6. **Keep PRs focused.** One logical change per PR. If you're fixing a bug and noticing unrelated cleanup, split them.
+7. **Security matters here.** This project handles cryptographic key material. Any change that touches signing paths, Vault auth, or token handling must include a brief security rationale in the PR description. If you find a security vulnerability, please report it privately before opening a public issue.
+8. **CI must pass.** PRs are merged only when all checks are green.
+
+There is no CLA. By submitting a PR you agree to license your contribution under the [Apache License 2.0](LICENSE).
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
